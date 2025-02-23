@@ -3041,12 +3041,33 @@ public class JSRealm {
     @TruffleBoundary
     private synchronized void createModuleLoader() {
         if (moduleLoader == null) {
-            if (getContextOptions().isCommonJSRequire()) {
-                moduleLoader = NpmCompatibleESModuleLoader.create(this);
-            } else {
-                moduleLoader = DefaultESModuleLoader.create(this);
+            JSModuleLoader loader = null;
+            switch (getContextOptions().getModuleLoaderFactoryMode()) {
+                case HANDLER -> loader = loadCustomModuleLoaderOrFallBack();
+                case DEFAULT -> loader = createStandardModuleLoader(this);
             }
+            assert loader != null;
+            moduleLoader = loader;
         }
+    }
+
+    private JSModuleLoader loadCustomModuleLoaderOrFallBack() {
+        JSModuleLoaderFactory fac = JSEngine.getModuleLoaderFactory();
+        if (fac == null) {
+            return createStandardModuleLoader(this);
+        }
+        var loader = fac.createLoader(this);
+        if (loader == null) {
+            return createStandardModuleLoader(this);
+        }
+        return loader;
+    }
+
+    private static JSModuleLoader createStandardModuleLoader(JSRealm realm) {
+        if (realm.getContextOptions().isCommonJSRequire()) {
+            return NpmCompatibleESModuleLoader.create(realm);
+        }
+        return DefaultESModuleLoader.create(realm);
     }
 
     public final JSAgent getAgent() {

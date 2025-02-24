@@ -617,6 +617,25 @@ public final class JSContextOptions {
     public static final OptionKey<UnhandledRejectionsTrackingMode> UNHANDLED_REJECTIONS = new OptionKey<>(UnhandledRejectionsTrackingMode.NONE);
     @CompilationFinal private UnhandledRejectionsTrackingMode unhandledRejectionsMode;
 
+    public enum ModuleLoaderFactoryMode {
+        DEFAULT,
+        HANDLER;
+
+        @Override
+        public String toString() {
+            return name().toLowerCase(Locale.ENGLISH);
+        }
+    }
+
+    public static final String MODULE_LOADER_FACTORY_NAME = JS_OPTION_PREFIX + "module-loader-factory";
+
+    @Option(name = MODULE_LOADER_FACTORY_NAME, category = OptionCategory.USER, stability = OptionStability.EXPERIMENTAL, sandbox = SandboxPolicy.TRUSTED, help = """
+                    Configure a factory for overriding the JavaScript module loader. Accepted values: \
+                    'default', default behavior applies for CommonJS and ESM. \
+                    'handler', the handler function set with JSEngine.setModuleLoaderFactory will be called to satisfy CJS or ESM imports.""") //
+    public static final OptionKey<ModuleLoaderFactoryMode> MODULE_LOADER_FACTORY_MODE = new OptionKey<>(ModuleLoaderFactoryMode.DEFAULT);
+    @CompilationFinal private ModuleLoaderFactoryMode moduleLoaderFactoryMode;
+
     public static final String OPERATOR_OVERLOADING_NAME = JS_OPTION_PREFIX + "operator-overloading";
     @Option(name = OPERATOR_OVERLOADING_NAME, category = OptionCategory.USER, help = "Enable operator overloading") //
     public static final OptionKey<Boolean> OPERATOR_OVERLOADING = new OptionKey<>(false);
@@ -774,6 +793,7 @@ public final class JSContextOptions {
         this.useUTCForLegacyDates = USE_UTC_FOR_LEGACY_DATES.hasBeenSet(optionValues) ? readBooleanOption(USE_UTC_FOR_LEGACY_DATES) : !v8CompatibilityMode;
         this.webAssembly = readBooleanOption(WEBASSEMBLY);
         this.unhandledRejectionsMode = readUnhandledRejectionsMode();
+        this.moduleLoaderFactoryMode = readModuleLoaderFactoryMode();
         this.newSetMethods = readBooleanOption(NEW_SET_METHODS);
         this.atomicsWaitAsync = ATOMICS_WAIT_ASYNC.hasBeenSet(optionValues) ? readBooleanOption(ATOMICS_WAIT_ASYNC) : getEcmaScriptVersion() >= JSConfig.ECMAScript2024;
         this.asyncIteratorHelpers = getEcmaScriptVersion() >= JSConfig.ECMAScript2018 && readBooleanOption(ASYNC_ITERATOR_HELPERS);
@@ -802,6 +822,10 @@ public final class JSContextOptions {
 
     private UnhandledRejectionsTrackingMode readUnhandledRejectionsMode() {
         return UNHANDLED_REJECTIONS.getValue(optionValues);
+    }
+
+    private ModuleLoaderFactoryMode readModuleLoaderFactoryMode() {
+        return MODULE_LOADER_FACTORY_MODE.getValue(optionValues);
     }
 
     private boolean readBooleanOption(OptionKey<Boolean> key) {
@@ -1269,5 +1293,9 @@ public final class JSContextOptions {
 
     public short getFrequencyBasedPropertyCacheLimit() {
         return frequencyBasedPropertyCacheLimit;
+    }
+
+    public ModuleLoaderFactoryMode getModuleLoaderFactoryMode() {
+        return moduleLoaderFactoryMode;
     }
 }

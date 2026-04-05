@@ -57,6 +57,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.SplittableRandom;
 import java.util.WeakHashMap;
+import java.util.function.Consumer;
 
 import org.graalvm.collections.Pair;
 import org.graalvm.home.HomeFinder;
@@ -421,6 +422,20 @@ public class JSRealm {
     private JSDynamicObject preinitIntlObject;
     private JSDynamicObject preinitConsoleBuiltinObject;
     private JSDynamicObject preinitPerformanceObject;
+
+    /** Callbacks registered by embedders to install custom builtins during context pre-init.
+     *  Cleared after execution so references don't leak into the image heap. */
+    private static List<Consumer<JSRealm>> preInitCallbacks;
+
+    /** Register a callback to run during {@link #preinitializeObjects()} at native-image build time.
+     *  The callback receives the pre-init realm and can install builtins, register modules, etc.
+     *  Must be called before the pre-init context is created (e.g., from a Feature's afterRegistration). */
+    public static void registerPreInitCallback(Consumer<JSRealm> callback) {
+        if (preInitCallbacks == null) {
+            preInitCallbacks = new ArrayList<>();
+        }
+        preInitCallbacks.add(callback);
+    }
 
     private volatile Map<Object, JSArrayObject> templateRegistry;
     private volatile Map<Object, JSArrayObject> dedentMap;
@@ -2706,6 +2721,13 @@ public class JSRealm {
         preinitIntlObject = createIntlObject();
         preinitConsoleBuiltinObject = createConsoleObject();
         preinitPerformanceObject = createPerformanceObject();
+
+        if (preInitCallbacks != null) {
+            for (Consumer<JSRealm> callback : preInitCallbacks) {
+                callback.accept(this);
+            }
+            preInitCallbacks = null;
+        }
     }
 
     private void addArgumentsFromEnv(TruffleLanguage.Env newEnv) {

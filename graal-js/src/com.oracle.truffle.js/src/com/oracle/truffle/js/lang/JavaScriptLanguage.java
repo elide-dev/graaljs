@@ -435,7 +435,11 @@ public final class JavaScriptLanguage extends TruffleLanguage<JSRealm> {
                     JSContextOptions.CONSOLE,
                     JSContextOptions.PERFORMANCE,
                     JSContextOptions.REGEXP_STATIC_RESULT,
-                    JSContextOptions.TIME_ZONE);
+                    JSContextOptions.TIME_ZONE,
+                    // Elide: set per entry file by the launcher; read dynamically at require-time
+                    // (JSContextOptions.getRequireCwd) and refreshed by JSRealm.patchContext, so a
+                    // differing value must not discard the pre-initialized context.
+                    JSContextOptions.COMMONJS_REQUIRE_CWD);
 
     /**
      * Check for options that differ from the expected options and do not support patching, in which

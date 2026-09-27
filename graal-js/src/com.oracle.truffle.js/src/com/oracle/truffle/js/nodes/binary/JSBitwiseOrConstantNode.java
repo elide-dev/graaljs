@@ -148,7 +148,7 @@ public abstract class JSBitwiseOrConstantNode extends JSUnaryNode {
 
     @Specialization(guards = "!isInt")
     protected BigInt doBigInt(BigInt a) {
-        return a.or(a);
+        return a.or(rightBigIntValue);
     }
 
     @InliningCutoff

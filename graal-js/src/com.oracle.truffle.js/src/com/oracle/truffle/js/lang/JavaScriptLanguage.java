@@ -42,6 +42,7 @@ package com.oracle.truffle.js.lang;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -79,7 +80,9 @@ import com.oracle.truffle.js.nodes.JavaScriptNode;
 import com.oracle.truffle.js.nodes.ScriptNode;
 import com.oracle.truffle.js.nodes.access.InitErrorObjectNodeFactory;
 import com.oracle.truffle.js.nodes.control.TryCatchNode;
+import com.oracle.truffle.js.nodes.function.DefineMethodNode;
 import com.oracle.truffle.js.nodes.function.FunctionRootNode;
+import com.oracle.truffle.js.nodes.function.JSFunctionExpressionNode;
 import com.oracle.truffle.js.nodes.instrumentation.JSTags.BinaryOperationTag;
 import com.oracle.truffle.js.nodes.instrumentation.JSTags.BuiltinRootTag;
 import com.oracle.truffle.js.nodes.instrumentation.JSTags.ControlFlowBlockTag;
@@ -114,6 +117,7 @@ import com.oracle.truffle.js.runtime.JSRuntime;
 import com.oracle.truffle.js.runtime.JobCallback;
 import com.oracle.truffle.js.runtime.builtins.JSErrorObject;
 import com.oracle.truffle.js.runtime.builtins.JSFunction;
+import com.oracle.truffle.js.runtime.builtins.JSFunctionData;
 import com.oracle.truffle.js.runtime.interop.JavaScriptLanguageView;
 import com.oracle.truffle.js.runtime.objects.AsyncContext;
 import com.oracle.truffle.js.runtime.objects.Undefined;
@@ -231,7 +235,40 @@ public final class JavaScriptLanguage extends TruffleLanguage<JSRealm> {
             return createEmptyScript(context).getCallTarget();
         }
 
+        if (JSRealm.get(null).getEnv().isPreInitialization()) {
+            createFunctionCallTargets(program.getRootNode());
+        }
         return new ParsedProgramRoot(this, context, program).getCallTarget();
+    }
+
+    /**
+     * Creates the call targets of the functions defined in {@code root}, and in those functions,
+     * without running them. A function's call target is otherwise created on its first call
+     * ({@link JSFunctionData#getCallTarget()}); during context pre-initialization, creating it
+     * puts it in the image heap with the pre-initialized context, so that the first call of the
+     * function at run time does not create it. With {@code js.lazy-translation}, a function's body
+     * is translated on its first call too: creating the call target translates it first, so that
+     * the translated body is in the image heap as well, and the functions it defines are found.
+     */
+    private static void createFunctionCallTargets(RootNode root) {
+        ArrayDeque<RootNode> roots = new ArrayDeque<>();
+        Set<JSFunctionData> seen = new HashSet<>();
+        roots.add(root);
+        while (!roots.isEmpty()) {
+            roots.poll().accept(node -> {
+                JSFunctionData functionData = null;
+                if (node instanceof JSFunctionExpressionNode function) {
+                    functionData = function.getFunctionData();
+                } else if (node instanceof DefineMethodNode method) {
+                    functionData = method.getFunctionData();
+                }
+                if (functionData != null && (functionData.getRootNode() != null || functionData.hasLazyInit()) && seen.add(functionData)) {
+                    functionData.getCallTarget();
+                    roots.add(functionData.getRootNode());
+                }
+                return true;
+            });
+        }
     }
 
     private final class ParsedProgramRoot extends RootNode {

@@ -92,6 +92,6 @@ public class OrdinaryCreateFromConstructorNode extends JavaScriptNode {
 
     @Override
     protected JavaScriptNode copyUninitialized(Set<Class<? extends Tag>> materializedTags) {
-        return new OrdinaryCreateFromConstructorNode(cloneUninitialized(getPrototypeFromConstructorNode, materializedTags), createObjectNode);
+        return new OrdinaryCreateFromConstructorNode(cloneUninitialized(getPrototypeFromConstructorNode, materializedTags), createObjectNode.copyUninitialized());
     }
 }

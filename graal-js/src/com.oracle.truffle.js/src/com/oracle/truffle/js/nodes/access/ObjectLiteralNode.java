@@ -1291,6 +1291,6 @@ public final class ObjectLiteralNode extends JavaScriptNode {
 
     @Override
     protected JavaScriptNode copyUninitialized(Set<Class<? extends Tag>> materializedTags) {
-        return new ObjectLiteralNode(ObjectLiteralMemberNode.cloneUninitialized(members, materializedTags), objectCreateNode, cloneUninitialized(prototypeExpression, materializedTags));
+        return new ObjectLiteralNode(ObjectLiteralMemberNode.cloneUninitialized(members, materializedTags), objectCreateNode.copyUninitialized(), cloneUninitialized(prototypeExpression, materializedTags));
     }
 }

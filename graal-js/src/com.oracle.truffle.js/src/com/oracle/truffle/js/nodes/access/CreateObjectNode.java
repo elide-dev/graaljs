@@ -101,6 +101,12 @@ public abstract class CreateObjectNode extends JavaScriptBaseNode {
         return false;
     }
 
+    /**
+     * A new, uninitialized node that creates the same kind of object, for the
+     * {@code copyUninitialized} of the node that holds this one.
+     */
+    public abstract CreateObjectNode copyUninitialized();
+
     private static class CreateOrdinaryObjectNode extends CreateObjectNode {
         protected CreateOrdinaryObjectNode(JSContext context) {
             super(context);
@@ -110,6 +116,11 @@ public abstract class CreateObjectNode extends JavaScriptBaseNode {
         public JSObject executeWithPrototype(JSRealm realm, Object proto) {
             assert proto == realm.getObjectPrototype() : proto;
             return JSOrdinary.create(context, realm);
+        }
+
+        @Override
+        public CreateObjectNode copyUninitialized() {
+            return new CreateOrdinaryObjectNode(context);
         }
     }
 
@@ -135,6 +146,11 @@ public abstract class CreateObjectNode extends JavaScriptBaseNode {
 
         protected static CreateObjectWithPrototypeNode create(JSContext context, JSClass jsclass) {
             return CreateObjectNodeFactory.CreateObjectWithPrototypeNodeGen.create(context, jsclass);
+        }
+
+        @Override
+        public CreateObjectWithPrototypeNode copyUninitialized() {
+            return create(context, jsclass);
         }
 
         @Specialization(guards = {"!context.isMultiContext()", "isValidPrototype(cachedPrototype)", "prototype == cachedPrototype"}, limit = "1")
@@ -234,6 +250,11 @@ public abstract class CreateObjectNode extends JavaScriptBaseNode {
         public JSObject executeWithPrototype(JSRealm realm, Object proto) {
             assert proto == realm.getObjectPrototype() : proto;
             return JSDictionary.create(context, realm);
+        }
+
+        @Override
+        public CreateObjectNode copyUninitialized() {
+            return new CreateDictionaryObjectNode(context);
         }
     }
 }

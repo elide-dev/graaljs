@@ -484,37 +484,8 @@ public class JSRealm {
     private final JSFunctionObject abstractModuleSourceConstructor;
     private final JSDynamicObject abstractModuleSourcePrototype;
 
-    /** WebAssembly support. */
-    private final Object wasmTableAlloc;
-    private final Object wasmTableGrow;
-    private final Object wasmTableRead;
-    private final Object wasmTableWrite;
-    private final Object wasmTableLength;
-    private final Object wasmFuncType;
-    private final Object wasmIsArray;
-    private final Object wasmIsStruct;
-    private final Object wasmIsFunc;
-    private final Object wasmMemAlloc;
-    private final Object wasmMemGrow;
-    private final Object wasmMemMax;
-    private final Object wasmMemHasAddressType64;
-    private final Object wasmMemAsByteBuffer;
-    private final Object wasmGlobalAlloc;
-    private final Object wasmGlobalRead;
-    private final Object wasmGlobalWrite;
-    private final Object wasmModuleInstantiate;
-    private final Object wasmModuleExports;
-    private final Object wasmModuleImports;
-    private final Object wasmCustomSections;
-    private final Object wasmInstanceExport;
-    private final Object wasmEmbedderDataGet;
-    private final Object wasmEmbedderDataSet;
-    private final Object wasmRefNull;
-    // Exception handling proposal
-    private final Object wasmTagAlloc;
-    private final Object wasmTagType;
-    private final Object wasmExnAlloc;
-    private final Object wasmExnTag;
+    /** WebAssembly support, resolved from the wasm language on first use. */
+    @CompilationFinal private WasmFunctions wasmFunctions;
     @CompilationFinal private JSWebAssemblyTagObject wasmJSTag;
 
     private final JSDynamicObject webAssemblyObject;
@@ -988,51 +959,7 @@ public class JSRealm {
         this.abstractModuleSourcePrototype = ctor.getPrototype();
 
         if (context.getLanguageOptions().webAssembly()) {
-            LanguageInfo wasmLanguageInfo = ensureWasmLanguageAvailable();
-            truffleLanguageEnv.initializeLanguage(wasmLanguageInfo);
-            Object wasmObject = truffleLanguageEnv.importSymbol("WebAssembly");
-
-            try {
-                InteropLibrary wasmInterop = InteropLibrary.getUncached(wasmObject);
-                wasmTableAlloc = wasmInterop.readMember(wasmObject, "table_alloc");
-                wasmTableGrow = wasmInterop.readMember(wasmObject, "table_grow");
-                wasmTableRead = wasmInterop.readMember(wasmObject, "table_read");
-                wasmTableWrite = wasmInterop.readMember(wasmObject, "table_write");
-                wasmTableLength = wasmInterop.readMember(wasmObject, "table_size");
-                wasmFuncType = wasmInterop.readMember(wasmObject, "func_type");
-                wasmIsArray = wasmInterop.readMember(wasmObject, "is_array");
-                wasmIsStruct = wasmInterop.readMember(wasmObject, "is_struct");
-                wasmIsFunc = wasmInterop.readMember(wasmObject, "is_func");
-                wasmMemAlloc = wasmInterop.readMember(wasmObject, "mem_alloc");
-                wasmMemGrow = wasmInterop.readMember(wasmObject, "mem_grow");
-                wasmMemMax = wasmInterop.readMember(wasmObject, "mem_max");
-                wasmMemHasAddressType64 = wasmInterop.readMember(wasmObject, "mem_has_address_type_64");
-                wasmGlobalAlloc = wasmInterop.readMember(wasmObject, "global_alloc");
-                wasmGlobalRead = wasmInterop.readMember(wasmObject, "global_read");
-                wasmGlobalWrite = wasmInterop.readMember(wasmObject, "global_write");
-                wasmModuleInstantiate = wasmInterop.readMember(wasmObject, "module_instantiate");
-                wasmModuleExports = wasmInterop.readMember(wasmObject, "module_exports");
-                wasmModuleImports = wasmInterop.readMember(wasmObject, "module_imports");
-                wasmCustomSections = wasmInterop.readMember(wasmObject, "custom_sections");
-                wasmInstanceExport = wasmInterop.readMember(wasmObject, "instance_export");
-                wasmEmbedderDataGet = wasmInterop.readMember(wasmObject, "embedder_data_get");
-                wasmEmbedderDataSet = wasmInterop.readMember(wasmObject, "embedder_data_set");
-                wasmMemAsByteBuffer = wasmInterop.readMember(wasmObject, "mem_as_byte_buffer");
-                wasmRefNull = wasmInterop.readMember(wasmObject, "ref_null");
-                // Exception handling proposal
-                wasmTagAlloc = wasmInterop.readMember(wasmObject, "tag_alloc");
-                wasmTagType = wasmInterop.readMember(wasmObject, "tag_type");
-                wasmExnAlloc = wasmInterop.readMember(wasmObject, "exn_alloc");
-                wasmExnTag = wasmInterop.readMember(wasmObject, "exn_tag");
-
-                InteropLibrary settersInterop = InteropLibrary.getUncached();
-                settersInterop.execute(wasmInterop.readMember(wasmObject, "mem_set_grow_callback"), new JSWebAssemblyMemoryGrowCallback(this));
-                settersInterop.execute(wasmInterop.readMember(wasmObject, "mem_set_notify_callback"), new JSWebAssemblyMemoryNotifyCallback(this, context));
-                settersInterop.execute(wasmInterop.readMember(wasmObject, "mem_set_wait_callback"), new JSWebAssemblyMemoryWaitCallback(this, context));
-            } catch (InteropException ex) {
-                throw Errors.shouldNotReachHere(ex);
-            }
-
+            ensureWasmLanguageAvailable();
             this.webAssemblyObject = JSWebAssembly.create(this);
             ctor = JSWebAssemblyModule.createConstructor(this);
             this.webAssemblyModuleConstructor = ctor.getFunctionObject();
@@ -1056,36 +983,6 @@ public class JSRealm {
             this.webAssemblyExceptionConstructor = ctor.getFunctionObject();
             this.webAssemblyExceptionPrototype = ctor.getPrototype();
         } else {
-            this.wasmTableAlloc = null;
-            this.wasmTableGrow = null;
-            this.wasmTableRead = null;
-            this.wasmTableWrite = null;
-            this.wasmTableLength = null;
-            this.wasmFuncType = null;
-            this.wasmIsArray = null;
-            this.wasmIsStruct = null;
-            this.wasmIsFunc = null;
-            this.wasmMemAlloc = null;
-            this.wasmMemGrow = null;
-            this.wasmMemMax = null;
-            this.wasmMemHasAddressType64 = null;
-            this.wasmMemAsByteBuffer = null;
-            this.wasmGlobalAlloc = null;
-            this.wasmGlobalRead = null;
-            this.wasmGlobalWrite = null;
-            this.wasmModuleInstantiate = null;
-            this.wasmModuleExports = null;
-            this.wasmModuleImports = null;
-            this.wasmCustomSections = null;
-            this.wasmInstanceExport = null;
-            this.wasmEmbedderDataGet = null;
-            this.wasmEmbedderDataSet = null;
-            this.wasmRefNull = null;
-            this.wasmTagAlloc = null;
-            this.wasmTagType = null;
-            this.wasmExnAlloc = null;
-            this.wasmExnTag = null;
-
             this.webAssemblyObject = null;
             this.webAssemblyGlobalConstructor = null;
             this.webAssemblyGlobalPrototype = null;
@@ -3316,119 +3213,218 @@ public class JSRealm {
     }
 
     public Object getWASMModuleInstantiate() {
-        return wasmModuleInstantiate;
+        return wasm().moduleInstantiate;
     }
 
     public Object getWASMModuleExports() {
-        return wasmModuleExports;
+        return wasm().moduleExports;
     }
 
     public Object getWASMModuleImports() {
-        return wasmModuleImports;
+        return wasm().moduleImports;
     }
 
     public Object getWASMCustomSections() {
-        return wasmCustomSections;
+        return wasm().customSections;
     }
 
     public Object getWASMTableAlloc() {
-        return wasmTableAlloc;
+        return wasm().tableAlloc;
     }
 
     public Object getWASMTableGrow() {
-        return wasmTableGrow;
+        return wasm().tableGrow;
     }
 
     public Object getWASMTableRead() {
-        return wasmTableRead;
+        return wasm().tableRead;
     }
 
     public Object getWASMTableWrite() {
-        return wasmTableWrite;
+        return wasm().tableWrite;
     }
 
     public Object getWASMTableLength() {
-        return wasmTableLength;
+        return wasm().tableLength;
     }
 
     public Object getWASMFuncType() {
-        return wasmFuncType;
+        return wasm().funcType;
     }
 
     public Object getWASMIsArray() {
-        return wasmIsArray;
+        return wasm().isArray;
     }
 
     public Object getWASMIsStruct() {
-        return wasmIsStruct;
+        return wasm().isStruct;
     }
 
     public Object getWASMIsFunc() {
-        return wasmIsFunc;
+        return wasm().isFunc;
     }
 
     public Object getWASMMemAlloc() {
-        return wasmMemAlloc;
+        return wasm().memAlloc;
     }
 
     public Object getWASMMemGrow() {
-        return wasmMemGrow;
+        return wasm().memGrow;
     }
 
     public Object getWASMMemMax() {
-        return wasmMemMax;
+        return wasm().memMax;
     }
 
     public Object getWASMMemHasAddressType64() {
-        return wasmMemHasAddressType64;
+        return wasm().memHasAddressType64;
     }
 
     public Object getWASMGlobalAlloc() {
-        return wasmGlobalAlloc;
+        return wasm().globalAlloc;
     }
 
     public Object getWASMGlobalRead() {
-        return wasmGlobalRead;
+        return wasm().globalRead;
     }
 
     public Object getWASMGlobalWrite() {
-        return wasmGlobalWrite;
+        return wasm().globalWrite;
     }
 
     public Object getWASMInstanceExport() {
-        return wasmInstanceExport;
+        return wasm().instanceExport;
     }
 
     public Object getWASMEmbedderDataGet() {
-        return wasmEmbedderDataGet;
+        return wasm().embedderDataGet;
     }
 
     public Object getWASMEmbedderDataSet() {
-        return wasmEmbedderDataSet;
+        return wasm().embedderDataSet;
     }
 
     public Object getWASMMemAsByteBuffer() {
-        return wasmMemAsByteBuffer;
+        return wasm().memAsByteBuffer;
     }
 
     public Object getWasmRefNull() {
-        return wasmRefNull;
+        return wasm().refNull;
     }
 
     public Object getWASMTagAlloc() {
-        return wasmTagAlloc;
+        return wasm().tagAlloc;
     }
 
     public Object getWASMTagType() {
-        return wasmTagType;
+        return wasm().tagType;
     }
 
     public Object getWASMExnAlloc() {
-        return wasmExnAlloc;
+        return wasm().exnAlloc;
     }
 
     public Object getWASMExnTag() {
-        return wasmExnTag;
+        return wasm().exnTag;
+    }
+
+    private WasmFunctions wasm() {
+        WasmFunctions functions = wasmFunctions;
+        if (CompilerDirectives.injectBranchProbability(SLOWPATH_PROBABILITY, functions == null)) {
+            enterOncePerContextBranch();
+            functions = initializeWasm();
+        }
+        return functions;
+    }
+
+    /**
+     * Initializes the wasm language on first use rather than with the realm, so that a
+     * pre-initialized context holds no wasm context (which cannot be patched).
+     */
+    @TruffleBoundary
+    private synchronized WasmFunctions initializeWasm() {
+        WasmFunctions functions = wasmFunctions;
+        if (functions == null) {
+            assert context.getLanguageOptions().webAssembly();
+            truffleLanguageEnv.initializeLanguage(ensureWasmLanguageAvailable());
+            Object wasmObject = truffleLanguageEnv.importSymbol("WebAssembly");
+            try {
+                InteropLibrary wasmInterop = InteropLibrary.getUncached(wasmObject);
+                functions = new WasmFunctions(wasmInterop, wasmObject);
+                InteropLibrary settersInterop = InteropLibrary.getUncached();
+                settersInterop.execute(wasmInterop.readMember(wasmObject, "mem_set_grow_callback"), new JSWebAssemblyMemoryGrowCallback(this));
+                settersInterop.execute(wasmInterop.readMember(wasmObject, "mem_set_notify_callback"), new JSWebAssemblyMemoryNotifyCallback(this, context));
+                settersInterop.execute(wasmInterop.readMember(wasmObject, "mem_set_wait_callback"), new JSWebAssemblyMemoryWaitCallback(this, context));
+            } catch (InteropException ex) {
+                throw Errors.shouldNotReachHere(ex);
+            }
+            wasmFunctions = functions;
+        }
+        return functions;
+    }
+
+    private static final class WasmFunctions {
+        final Object tableAlloc;
+        final Object tableGrow;
+        final Object tableRead;
+        final Object tableWrite;
+        final Object tableLength;
+        final Object funcType;
+        final Object isArray;
+        final Object isStruct;
+        final Object isFunc;
+        final Object memAlloc;
+        final Object memGrow;
+        final Object memMax;
+        final Object memHasAddressType64;
+        final Object globalAlloc;
+        final Object globalRead;
+        final Object globalWrite;
+        final Object moduleInstantiate;
+        final Object moduleExports;
+        final Object moduleImports;
+        final Object customSections;
+        final Object instanceExport;
+        final Object embedderDataGet;
+        final Object embedderDataSet;
+        final Object memAsByteBuffer;
+        final Object refNull;
+        final Object tagAlloc;
+        final Object tagType;
+        final Object exnAlloc;
+        final Object exnTag;
+
+        WasmFunctions(InteropLibrary interop, Object wasmObject) throws InteropException {
+            tableAlloc = interop.readMember(wasmObject, "table_alloc");
+            tableGrow = interop.readMember(wasmObject, "table_grow");
+            tableRead = interop.readMember(wasmObject, "table_read");
+            tableWrite = interop.readMember(wasmObject, "table_write");
+            tableLength = interop.readMember(wasmObject, "table_size");
+            funcType = interop.readMember(wasmObject, "func_type");
+            isArray = interop.readMember(wasmObject, "is_array");
+            isStruct = interop.readMember(wasmObject, "is_struct");
+            isFunc = interop.readMember(wasmObject, "is_func");
+            memAlloc = interop.readMember(wasmObject, "mem_alloc");
+            memGrow = interop.readMember(wasmObject, "mem_grow");
+            memMax = interop.readMember(wasmObject, "mem_max");
+            memHasAddressType64 = interop.readMember(wasmObject, "mem_has_address_type_64");
+            globalAlloc = interop.readMember(wasmObject, "global_alloc");
+            globalRead = interop.readMember(wasmObject, "global_read");
+            globalWrite = interop.readMember(wasmObject, "global_write");
+            moduleInstantiate = interop.readMember(wasmObject, "module_instantiate");
+            moduleExports = interop.readMember(wasmObject, "module_exports");
+            moduleImports = interop.readMember(wasmObject, "module_imports");
+            customSections = interop.readMember(wasmObject, "custom_sections");
+            instanceExport = interop.readMember(wasmObject, "instance_export");
+            embedderDataGet = interop.readMember(wasmObject, "embedder_data_get");
+            embedderDataSet = interop.readMember(wasmObject, "embedder_data_set");
+            memAsByteBuffer = interop.readMember(wasmObject, "mem_as_byte_buffer");
+            refNull = interop.readMember(wasmObject, "ref_null");
+            tagAlloc = interop.readMember(wasmObject, "tag_alloc");
+            tagType = interop.readMember(wasmObject, "tag_type");
+            exnAlloc = interop.readMember(wasmObject, "exn_alloc");
+            exnTag = interop.readMember(wasmObject, "exn_tag");
+        }
     }
 
     public JSWebAssemblyTagObject getJSTagObj() {

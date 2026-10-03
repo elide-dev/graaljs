@@ -288,6 +288,12 @@ public final class JSContextOptions {
     @Option(name = PERFORMANCE_NAME, category = OptionCategory.USER, stability = OptionStability.STABLE, sandbox = SandboxPolicy.UNTRUSTED, help = "Provide 'performance' global property.") //
     public static final OptionKey<Boolean> PERFORMANCE = new OptionKey<>(false);
 
+    public static final String PREINIT_OPTIONAL_GLOBALS_NAME = JS_OPTION_PREFIX + "preinit-optional-globals";
+    @Option(name = PREINIT_OPTIONAL_GLOBALS_NAME, category = OptionCategory.EXPERT, stability = OptionStability.EXPERIMENTAL, help = "" +
+                    "Define optional global properties (e.g. global, console, print, require) during context pre-initialization, for the option values used then. " +
+                    "Patching the context then only changes the ones whose options differ.") //
+    public static final OptionKey<Boolean> PREINIT_OPTIONAL_GLOBALS = new OptionKey<>(false);
+
     public static final String SHELL_NAME = JS_OPTION_PREFIX + "shell";
     @Option(name = SHELL_NAME, category = OptionCategory.USER, help = "Provide global functions for js shell.") //
     public static final OptionKey<Boolean> SHELL = new OptionKey<>(false);
@@ -1160,6 +1166,11 @@ public final class JSContextOptions {
         } else {
             return false;
         }
+    }
+
+    public boolean isPreinitOptionalGlobals() {
+        CompilerAsserts.neverPartOfCompilation("Option preinit-optional-globals was assumed not to be accessed in compiled code.");
+        return PREINIT_OPTIONAL_GLOBALS.getValue(optionValues);
     }
 
     public boolean isPerformance() {

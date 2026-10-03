@@ -480,7 +480,10 @@ public final class JavaScriptLanguage extends TruffleLanguage<JSRealm> {
                     // Elide: set per entry file by the launcher; read dynamically at require-time
                     // (JSContextOptions.getRequireCwd) and refreshed by JSRealm.patchContext, so a
                     // differing value must not discard the pre-initialized context.
-                    JSContextOptions.COMMONJS_REQUIRE_CWD);
+                    JSContextOptions.COMMONJS_REQUIRE_CWD,
+                    // Elide: only read during context pre-initialization, so the run-time value
+                    // does not matter.
+                    JSContextOptions.PREINIT_OPTIONAL_GLOBALS);
 
     /**
      * Check for options that differ from the expected options and do not support patching, in which

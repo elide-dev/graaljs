@@ -291,7 +291,9 @@ public final class JSContextOptions {
     public static final String PREINIT_OPTIONAL_GLOBALS_NAME = JS_OPTION_PREFIX + "preinit-optional-globals";
     @Option(name = PREINIT_OPTIONAL_GLOBALS_NAME, category = OptionCategory.EXPERT, stability = OptionStability.EXPERIMENTAL, help = "" +
                     "Define optional global properties (e.g. global, console, print, require) during context pre-initialization, for the option values used then. " +
-                    "Patching the context then only changes the ones whose options differ.") //
+                    "Patching the context then only changes the ones whose options differ. " +
+                    "Each global added or removed at patch time changes the global object's shape, so set the options that control them " +
+                    "(e.g. js.global-property, js.console, js.print, js.load, js.performance) to their run-time values during pre-initialization.") //
     public static final OptionKey<Boolean> PREINIT_OPTIONAL_GLOBALS = new OptionKey<>(false);
 
     public static final String SHELL_NAME = JS_OPTION_PREFIX + "shell";

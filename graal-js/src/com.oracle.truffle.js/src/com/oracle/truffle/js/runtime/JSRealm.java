@@ -51,6 +51,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -362,6 +363,12 @@ public class JSRealm {
     private Object reflectApplyFunctionObject;
     private Object reflectConstructFunctionObject;
     private Object commonJSRequireFunctionObject;
+
+    /**
+     * The optional globals defined during context pre-initialization, if
+     * {@link JSContextOptions#PREINIT_OPTIONAL_GLOBALS} is set; null otherwise and once patched.
+     */
+    private EnumSet<OptionalGlobal> preinitOptionalGlobals;
     private Object jsonParseFunctionObject;
 
     private final JSFunctionObject arrayBufferConstructor;
@@ -2117,33 +2124,44 @@ public class JSRealm {
     @TruffleBoundary
     private void addCommonJSGlobals() {
         if (getContextOptions().isCommonJSRequire()) {
-            String cwdOption = getContextOptions().getRequireCwd();
-            try {
-                if (!cwdOption.isEmpty()) {
-                    TruffleFile cwdFile = getEnv().getPublicTruffleFile(cwdOption);
-                    if (!cwdFile.exists()) {
-                        throw Errors.createError("Invalid CommonJS root folder: " + cwdOption);
-                    }
-                }
-            } catch (SecurityException | UnsupportedOperationException | IllegalArgumentException se) {
-                throw Errors.createError("Access denied to CommonJS root folder: " + cwdOption);
-            }
-            // Define `require` and other globals in global scope.
-            JSBuiltinsContainer builtins = GlobalCommonJSRequireBuiltins.GLOBAL_COMMONJS_REQUIRE_EXTENSIONS;
-            JSDynamicObject requireFunction = lookupFunction(builtins, Strings.REQUIRE_PROPERTY_NAME);
-            JSDynamicObject resolveFunction = lookupFunction(builtins, Strings.RESOLVE_PROPERTY_NAME);
-            JSObject.set(requireFunction, Strings.RESOLVE_PROPERTY_NAME, resolveFunction);
-            putGlobalProperty(Strings.REQUIRE_PROPERTY_NAME, requireFunction);
-            JSDynamicObject dirnameGetter = lookupFunction(builtins, GlobalCommonJSRequireBuiltins.GlobalRequire.dirnameGetter.getKey());
-            JSObject.defineOwnProperty(getGlobalObject(), Strings.DIRNAME_VAR_NAME, PropertyDescriptor.createAccessor(dirnameGetter, Undefined.instance, false, false));
-            JSDynamicObject filenameGetter = lookupFunction(builtins, GlobalCommonJSRequireBuiltins.GlobalRequire.filenameGetter.getKey());
-            JSObject.defineOwnProperty(getGlobalObject(), Strings.FILENAME_VAR_NAME, PropertyDescriptor.createAccessor(filenameGetter, Undefined.instance, false, false));
-            JSDynamicObject moduleGetter = lookupFunction(builtins, GlobalCommonJSRequireBuiltins.GlobalRequire.globalModuleGetter.getKey());
-            JSObject.defineOwnProperty(getGlobalObject(), Strings.MODULE_PROPERTY_NAME, PropertyDescriptor.createAccessor(moduleGetter, Undefined.instance, false, false));
-            JSDynamicObject exportsGetter = lookupFunction(builtins, GlobalCommonJSRequireBuiltins.GlobalRequire.globalExportsGetter.getKey());
-            JSObject.defineOwnProperty(getGlobalObject(), Strings.EXPORTS_PROPERTY_NAME, PropertyDescriptor.createAccessor(exportsGetter, Undefined.instance, false, false));
-            this.commonJSRequireFunctionObject = requireFunction;
+            validateCommonJSRequireCwd();
+            defineCommonJSGlobals();
         }
+    }
+
+    /** Checks the CommonJS root folder option against the run-time file system. */
+    @TruffleBoundary
+    private void validateCommonJSRequireCwd() {
+        String cwdOption = getContextOptions().getRequireCwd();
+        try {
+            if (!cwdOption.isEmpty()) {
+                TruffleFile cwdFile = getEnv().getPublicTruffleFile(cwdOption);
+                if (!cwdFile.exists()) {
+                    throw Errors.createError("Invalid CommonJS root folder: " + cwdOption);
+                }
+            }
+        } catch (SecurityException | UnsupportedOperationException | IllegalArgumentException se) {
+            throw Errors.createError("Access denied to CommonJS root folder: " + cwdOption);
+        }
+    }
+
+    @TruffleBoundary
+    private void defineCommonJSGlobals() {
+        // Define `require` and other globals in global scope.
+        JSBuiltinsContainer builtins = GlobalCommonJSRequireBuiltins.GLOBAL_COMMONJS_REQUIRE_EXTENSIONS;
+        JSDynamicObject requireFunction = lookupFunction(builtins, Strings.REQUIRE_PROPERTY_NAME);
+        JSDynamicObject resolveFunction = lookupFunction(builtins, Strings.RESOLVE_PROPERTY_NAME);
+        JSObject.set(requireFunction, Strings.RESOLVE_PROPERTY_NAME, resolveFunction);
+        putGlobalProperty(Strings.REQUIRE_PROPERTY_NAME, requireFunction);
+        JSDynamicObject dirnameGetter = lookupFunction(builtins, GlobalCommonJSRequireBuiltins.GlobalRequire.dirnameGetter.getKey());
+        JSObject.defineOwnProperty(getGlobalObject(), Strings.DIRNAME_VAR_NAME, PropertyDescriptor.createAccessor(dirnameGetter, Undefined.instance, false, false));
+        JSDynamicObject filenameGetter = lookupFunction(builtins, GlobalCommonJSRequireBuiltins.GlobalRequire.filenameGetter.getKey());
+        JSObject.defineOwnProperty(getGlobalObject(), Strings.FILENAME_VAR_NAME, PropertyDescriptor.createAccessor(filenameGetter, Undefined.instance, false, false));
+        JSDynamicObject moduleGetter = lookupFunction(builtins, GlobalCommonJSRequireBuiltins.GlobalRequire.globalModuleGetter.getKey());
+        JSObject.defineOwnProperty(getGlobalObject(), Strings.MODULE_PROPERTY_NAME, PropertyDescriptor.createAccessor(moduleGetter, Undefined.instance, false, false));
+        JSDynamicObject exportsGetter = lookupFunction(builtins, GlobalCommonJSRequireBuiltins.GlobalRequire.globalExportsGetter.getKey());
+        JSObject.defineOwnProperty(getGlobalObject(), Strings.EXPORTS_PROPERTY_NAME, PropertyDescriptor.createAccessor(exportsGetter, Undefined.instance, false, false));
+        this.commonJSRequireFunctionObject = requireFunction;
     }
 
     private void addLoadGlobals() {
@@ -2194,6 +2212,13 @@ public class JSRealm {
     public void addOptionalGlobals() {
         assert !getEnv().isPreInitialization();
 
+        EnumSet<OptionalGlobal> preinitialized = preinitOptionalGlobals;
+        if (preinitialized != null) {
+            preinitOptionalGlobals = null;
+            patchOptionalGlobals(preinitialized);
+            return;
+        }
+
         addGlobalGlobal();
         addShellGlobals();
         addScriptingGlobals();
@@ -2208,6 +2233,132 @@ public class JSRealm {
             setupJavaInterop();
         }
         addCommonJSGlobals();
+    }
+
+    /**
+     * Optional globals that context pre-initialization can define
+     * ({@link JSContextOptions#PREINIT_OPTIONAL_GLOBALS}), in the order {@link #addOptionalGlobals()}
+     * defines them. Scripting and Java interop globals depend on the run-time environment, so they
+     * are always defined when the context is patched.
+     */
+    private enum OptionalGlobal {
+        GLOBAL,
+        SHELL,
+        INTL,
+        LOAD,
+        CONSOLE,
+        PRINT,
+        CRYPTO,
+        PERFORMANCE,
+        COMMONJS
+    }
+
+    /**
+     * Defines the enabled optional globals during context pre-initialization, so that patching the
+     * context does not add them to the (large) global object again.
+     */
+    private void preinitializeOptionalGlobals() {
+        EnumSet<OptionalGlobal> defined = EnumSet.noneOf(OptionalGlobal.class);
+        for (OptionalGlobal global : OptionalGlobal.values()) {
+            if (isOptionalGlobalEnabled(global)) {
+                defineOptionalGlobal(global);
+                defined.add(global);
+            }
+        }
+        preinitOptionalGlobals = defined;
+    }
+
+    /**
+     * Brings the optional globals defined during context pre-initialization in line with the
+     * run-time options: defines the newly enabled ones and removes the disabled ones. Then defines
+     * the globals that depend on the run-time environment.
+     */
+    private void patchOptionalGlobals(EnumSet<OptionalGlobal> preinitialized) {
+        for (OptionalGlobal global : OptionalGlobal.values()) {
+            boolean enabled = isOptionalGlobalEnabled(global);
+            boolean defined = preinitialized.contains(global);
+            if (enabled && !defined) {
+                defineOptionalGlobal(global);
+            } else if (!enabled && defined) {
+                removeOptionalGlobal(global);
+            }
+        }
+        addScriptingGlobals();
+        if (isJavaInteropEnabled()) {
+            setupJavaInterop();
+        }
+        if (getContextOptions().isCommonJSRequire()) {
+            validateCommonJSRequireCwd();
+        }
+    }
+
+    private boolean isOptionalGlobalEnabled(OptionalGlobal global) {
+        JSContextOptions options = getContextOptions();
+        return switch (global) {
+            case GLOBAL -> options.isGlobalProperty();
+            case SHELL -> options.isShell();
+            case INTL -> context.isOptionIntl402();
+            case LOAD -> options.isLoad();
+            case CONSOLE -> options.isConsole();
+            case PRINT -> options.isPrint();
+            case CRYPTO -> options.isCrypto();
+            case PERFORMANCE -> options.isPerformance();
+            case COMMONJS -> options.isCommonJSRequire();
+        };
+    }
+
+    private void defineOptionalGlobal(OptionalGlobal global) {
+        switch (global) {
+            case GLOBAL -> addGlobalGlobal();
+            case SHELL -> addShellGlobals();
+            case INTL -> addIntlGlobal();
+            case LOAD -> addLoadGlobals();
+            case CONSOLE -> addConsoleGlobals();
+            case PRINT -> addPrintGlobals();
+            case CRYPTO -> addCryptoGlobal();
+            case PERFORMANCE -> addPerformanceGlobal();
+            case COMMONJS -> defineCommonJSGlobals();
+        }
+    }
+
+    private void removeOptionalGlobal(OptionalGlobal global) {
+        switch (global) {
+            case GLOBAL -> removeGlobalProperty(Strings.GLOBAL);
+            case SHELL -> GlobalBuiltins.GLOBAL_SHELL.forEachBuiltin((Builtin builtin) -> removeGlobalProperty(builtin.getKey()));
+            case INTL -> removeGlobalProperty(JSIntl.CLASS_NAME);
+            case LOAD -> {
+                removeGlobalProperty(Strings.LOAD);
+                removeGlobalProperty(Strings.LOAD_WITH_NEW_GLOBAL);
+            }
+            case CONSOLE -> removeGlobalProperty(Strings.CONSOLE);
+            case PRINT -> {
+                removeGlobalProperty(Strings.PRINT);
+                removeGlobalProperty(Strings.PRINT_ERR);
+            }
+            case CRYPTO -> {
+                removeGlobalProperty(CryptoBuiltins.FUNCTION_NAME);
+                removeGlobalProperty(CryptoBuiltins.OBJECT_NAME);
+                cryptoObject = null;
+            }
+            case PERFORMANCE -> {
+                removeGlobalProperty(PerformanceBuiltins.FUNCTION_NAME);
+                removeGlobalProperty(PerformanceBuiltins.OBJECT_NAME);
+                performanceObject = null;
+            }
+            case COMMONJS -> {
+                removeGlobalProperty(Strings.REQUIRE_PROPERTY_NAME);
+                removeGlobalProperty(Strings.DIRNAME_VAR_NAME);
+                removeGlobalProperty(Strings.FILENAME_VAR_NAME);
+                removeGlobalProperty(Strings.MODULE_PROPERTY_NAME);
+                removeGlobalProperty(Strings.EXPORTS_PROPERTY_NAME);
+                commonJSRequireFunctionObject = null;
+            }
+        }
+    }
+
+    /** Removes a global property regardless of its attributes (e.g. non-configurable). */
+    private void removeGlobalProperty(Object key) {
+        Properties.removeKeyUncached(getGlobalObject(), key);
     }
 
     private void addGlobalGlobal() {
@@ -2794,6 +2945,9 @@ public class JSRealm {
         preinitCryptoFunctionObject = CryptoBuiltins.createCryptoFunction(this, cryptoPrototype);
         preinitCryptoObject = CryptoBuiltins.createCryptoObject(this, cryptoPrototype);
         preinitPerformanceObject = PerformanceBuiltins.createPerformanceObject(this);
+        if (getContextOptions().isPreinitOptionalGlobals()) {
+            preinitializeOptionalGlobals();
+        }
     }
 
     private void addArgumentsFromEnv(TruffleLanguage.Env newEnv) {

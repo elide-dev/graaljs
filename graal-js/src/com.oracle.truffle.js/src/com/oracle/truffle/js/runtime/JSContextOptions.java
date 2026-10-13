@@ -893,7 +893,7 @@ public final class JSContextOptions {
         this.webAssembly = readBooleanOption(WEBASSEMBLY);
         this.unhandledRejectionsMode = readUnhandledRejectionsMode();
         this.moduleLoaderFactoryMode = readModuleLoaderFactoryMode();
-	this.newSetMethods = readBooleanOption(NEW_SET_METHODS, JSConfig.ECMAScript2025);
+        this.newSetMethods = readBooleanOption(NEW_SET_METHODS, JSConfig.ECMAScript2025);
         this.atomicsWaitAsync = readBooleanOption(ATOMICS_WAIT_ASYNC, JSConfig.ECMAScript2024);
         this.asyncIteratorHelpers = getEcmaScriptVersion() >= JSConfig.ECMAScript2018 && readBooleanOption(ASYNC_ITERATOR_HELPERS);
         this.iteratorHelpers = getEcmaScriptVersion() >= JSConfig.ECMAScript2018 &&

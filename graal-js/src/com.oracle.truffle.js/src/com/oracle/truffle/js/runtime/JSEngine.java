@@ -40,7 +40,6 @@
  */
 package com.oracle.truffle.js.runtime;
 
-import java.util.Optional;
 import java.util.ServiceLoader;
 
 import com.oracle.truffle.api.CompilerDirectives;

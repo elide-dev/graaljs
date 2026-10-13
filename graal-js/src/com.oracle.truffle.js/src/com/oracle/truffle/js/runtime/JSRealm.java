@@ -3462,7 +3462,15 @@ public class JSRealm {
         return wasm().embedderDataSet;
     }
 
+    /**
+     * Returns the function that views a wasm memory as a {@code ByteBuffer}, or {@code null} if
+     * WebAssembly is disabled: interop buffer conversion falls back without it, as it did before
+     * wasm was initialized lazily.
+     */
     public Object getWASMMemAsByteBuffer() {
+        if (!context.getLanguageOptions().webAssembly()) {
+            return null;
+        }
         return wasm().memAsByteBuffer;
     }
 

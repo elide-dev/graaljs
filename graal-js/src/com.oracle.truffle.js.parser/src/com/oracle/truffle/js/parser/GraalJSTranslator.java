@@ -174,6 +174,7 @@ import com.oracle.truffle.js.parser.env.FunctionEnvironment;
 import com.oracle.truffle.js.parser.env.FunctionEnvironment.JumpTargetCloseable;
 import com.oracle.truffle.js.parser.env.GlobalEnvironment;
 import com.oracle.truffle.js.parser.env.PrivateEnvironment;
+import com.oracle.truffle.js.parser.env.StrictEnvironment;
 import com.oracle.truffle.js.parser.env.WithEnvironment;
 import com.oracle.truffle.js.parser.internal.ir.debug.PrintVisitor;
 import com.oracle.truffle.js.runtime.BigInt;
@@ -1198,6 +1199,12 @@ abstract class GraalJSTranslator extends com.oracle.js.parser.ir.visitor.Transla
             }
 
             @Override
+            public boolean enterWithNode(WithNode withNode) {
+                directArgumentsAccess = false;
+                return false;
+            }
+
+            @Override
             public boolean enterFunctionNode(FunctionNode nestedFunctionNode) {
                 if (nestedFunctionNode == functionNode) {
                     return true;
@@ -1274,9 +1281,13 @@ abstract class GraalJSTranslator extends com.oracle.js.parser.ir.visitor.Transla
         assert !currentFunction().getNonArrowParentFunction().isDerivedConstructor();
         VarRef thisVar = environment.findThisVar();
         boolean isLexicalThis = functionNode.isArrow();
-        JavaScriptNode getThisNode = isLexicalThis ? factory.createAccessLexicalThis() : factory.createAccessThis();
-        if (!environment.isStrictMode() && !isLexicalThis) {
-            getThisNode = factory.createPrepareThisBinding(context, getThisNode);
+        JavaScriptNode getThisNode;
+        if (isLexicalThis) {
+            getThisNode = factory.createAccessLexicalThis();
+        } else if (environment.isStrictMode()) {
+            getThisNode = factory.createAccessThis();
+        } else {
+            getThisNode = factory.createPrepareThisBinding();
         }
         if (functionNode.isClassConstructor()) {
             getThisNode = initializeInstanceElements(getThisNode);
@@ -2544,8 +2555,9 @@ abstract class GraalJSTranslator extends com.oracle.js.parser.ir.visitor.Transla
                 FrameSlotVarRef frameVarRef = (FrameSlotVarRef) varRef;
                 JSFrameSlot frameSlot = frameVarRef.getFrameSlot();
                 if (JSFrameUtil.isConst(frameSlot)) {
-                    // we know this is going to throw. do the read and throw TypeError.
-                    return tagExpression(checkMutableBinding(frameVarRef.createReadNode(), frameSlot.getIdentifier()), unaryNode);
+                    // Perform ToNumeric before throwing for the immutable binding write.
+                    JavaScriptNode value = factory.createToNumericOperand(frameVarRef.createReadNode());
+                    return tagExpression(checkMutableBinding(value, frameSlot.getIdentifier()), unaryNode);
                 }
                 return tagExpression(factory.createLocalVarInc(tokenTypeToUnaryOperation(unaryNode.tokenType()), frameSlot, frameVarRef.hasTDZCheck(),
                                 frameVarRef.createScopeFrameNode()), unaryNode);
@@ -2944,42 +2956,26 @@ abstract class GraalJSTranslator extends com.oracle.js.parser.ir.visitor.Transla
         return transformAssignmentImpl(assignmentExpression, lhsExpression, assignedValue, false, binaryOp, returnOldValue, convertLHSToNumeric);
     }
 
-    @SuppressWarnings("fallthrough")
     private JavaScriptNode transformAssignmentImpl(Expression assignmentExpression, Expression lhsExpression, JavaScriptNode assignedValue, boolean initializationAssignment,
                     BinaryOperation binaryOp, boolean returnOldValue, boolean convertLHSToNumeric) {
         JavaScriptNode assignedNode;
-        switch (lhsExpression.tokenType()) {
-            // Checkstyle: stop
-            default: // ident with other token type
-                // Checkstyle: resume
-                if (!(lhsExpression instanceof IdentNode) && !(lhsExpression instanceof CallNode)) {
-                    throw Errors.unsupported("unsupported assignment to token type: " + lhsExpression.tokenType().toString() + " " + lhsExpression.toString());
-                }
-                // fall through
-            case IDENT:
-                if (lhsExpression instanceof CallNode callNode) {
-                    assert callNode.isWebCompatAssignmentTargetType();
-                    assignedNode = factory.createDual(context, transform(lhsExpression), factory.createThrowError(JSErrorType.ReferenceError, INVALID_LHS));
-                } else {
-                    assignedNode = transformAssignmentIdent((IdentNode) lhsExpression, assignedValue, binaryOp, returnOldValue, convertLHSToNumeric, initializationAssignment);
-                }
-                break;
-            case LBRACKET:
-                // target[element]
-                assignedNode = transformIndexAssignment((IndexNode) lhsExpression, assignedValue, binaryOp, returnOldValue, convertLHSToNumeric);
-                break;
-            case PERIOD:
-                // target.property
-                assignedNode = transformPropertyAssignment((AccessNode) lhsExpression, assignedValue, binaryOp, returnOldValue, convertLHSToNumeric);
-                break;
-            case ARRAY:
-                assert binaryOp == null;
-                assignedNode = transformDestructuringArrayAssignment(lhsExpression, assignedValue, initializationAssignment);
-                break;
-            case LBRACE:
-                assert binaryOp == null;
-                assignedNode = transformDestructuringObjectAssignment(lhsExpression, assignedValue, initializationAssignment);
-                break;
+        if (lhsExpression instanceof IdentNode identNode) {
+            assignedNode = transformAssignmentIdent(identNode, assignedValue, binaryOp, returnOldValue, convertLHSToNumeric, initializationAssignment);
+        } else if (lhsExpression instanceof IndexNode indexNode) {
+            assignedNode = transformIndexAssignment(indexNode, assignedValue, binaryOp, returnOldValue, convertLHSToNumeric);
+        } else if (lhsExpression instanceof AccessNode accessNode) {
+            assignedNode = transformPropertyAssignment(accessNode, assignedValue, binaryOp, returnOldValue, convertLHSToNumeric);
+        } else if (lhsExpression instanceof LiteralNode.ArrayLiteralNode) {
+            assert binaryOp == null;
+            assignedNode = transformDestructuringArrayAssignment(lhsExpression, assignedValue, initializationAssignment);
+        } else if (lhsExpression instanceof ObjectNode) {
+            assert binaryOp == null;
+            assignedNode = transformDestructuringObjectAssignment(lhsExpression, assignedValue, initializationAssignment);
+        } else if (lhsExpression instanceof CallNode callNode) {
+            assert callNode.isWebCompatAssignmentTargetType();
+            assignedNode = factory.createDual(context, transform(lhsExpression), factory.createThrowError(JSErrorType.ReferenceError, INVALID_LHS));
+        } else {
+            throw Errors.unsupported("unsupported assignment to token type: " + lhsExpression.tokenType().toString() + " " + lhsExpression.toString());
         }
         if (returnOldValue && assignedNode instanceof DualNode) {
             ensureHasSourceSection(((DualNode) assignedNode).getLeft(), assignmentExpression);
@@ -3072,7 +3068,7 @@ abstract class GraalJSTranslator extends com.oracle.js.parser.ir.visitor.Transla
                                 accessNode.getBase());
                 target1 = tagExpression(factory.createSuperPropertyReference(targetTemp.createReadNode(), factory.copy(superTarget.getThisValue())), accessNode.getBase());
                 target2 = tagExpression(factory.createSuperPropertyReference(targetTemp.createReadNode(), factory.copy(superTarget.getThisValue())), accessNode.getBase());
-            } else if (target instanceof RepeatableNode) {
+            } else if (!isLogicalOp(binaryOp) && target instanceof RepeatableNode) {
                 target1 = target;
                 target2 = factory.copy(target);
             } else {
@@ -3163,7 +3159,7 @@ abstract class GraalJSTranslator extends com.oracle.js.parser.ir.visitor.Transla
                 JavaScriptNode preparedIndex = factory.createExprBlock(
                                 computedSuperPropertyReference ? factory.createEmpty() : keyTemp.createWriteNode(elem),
                                 factory.createRequireObjectCoercible(targetTemp.createReadNode()),
-                                keyTemp.createWriteNode(factory.createToPropertyKey(keyTemp.createReadNode())));
+                                keyTemp.createWriteNode(factory.createToArrayIndexNoString(keyTemp.createReadNode())));
                 JavaScriptNode readNode = tagExpression(factory.createReadElementNode(context, target1, preparedIndex), indexNode);
                 JavaScriptNode writeNode = factory.createCompoundWriteElementNode(target2, readIndex, assignedValue, null, context, environment.isStrictMode());
                 assignedNode = factory.createBinary(context, binaryOp, readNode, writeNode);
@@ -3887,7 +3883,8 @@ abstract class GraalJSTranslator extends com.oracle.js.parser.ir.visitor.Transla
         Scope classHeadScope = classNode.getClassHeadScope();
         Scope classBodyScope = classNode.getScope();
         boolean needsScope = classHeadScope.hasDeclarations() || classBodyScope.hasDeclarations();
-        try (EnvironmentCloseable blockEnv = new EnvironmentCloseable(needsScope ? newClassEnvironment(classHeadScope) : environment)) {
+        try (EnvironmentCloseable strictEnv = new EnvironmentCloseable(new StrictEnvironment(environment, factory, context));
+                        EnvironmentCloseable blockEnv = new EnvironmentCloseable(needsScope ? newClassEnvironment(classHeadScope) : environment)) {
             TruffleString className = null;
             Symbol classNameSymbol = null;
             IdentNode ident = classNode.getIdent();

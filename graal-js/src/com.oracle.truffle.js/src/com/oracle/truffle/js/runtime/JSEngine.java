@@ -49,11 +49,9 @@ import com.oracle.truffle.js.lang.JavaScriptLanguage;
 public final class JSEngine {
     private static final JSEngine INSTANCE = new JSEngine();
 
-    @CompilerDirectives.CompilationFinal
-    private static volatile JSModuleLoaderFactory MODULE_LOADER_FACTORY = null;
+    @CompilerDirectives.CompilationFinal private static volatile JSModuleLoaderFactory MODULE_LOADER_FACTORY = null;
 
-    @CompilerDirectives.CompilationFinal
-    private static volatile CommonJSResolverHook CJS_RESOLVER_HOOK = null;
+    @CompilerDirectives.CompilationFinal private static volatile CommonJSResolverHook CJS_RESOLVER_HOOK = null;
 
     private final Evaluator parser;
 

@@ -1062,12 +1062,11 @@ public final class ObjectLiteralNode extends JavaScriptNode {
             return ClassElementDefinitionRecord.createPrivateAutoAccessor(accessorKey, storageKey, value, getter, setter, decorators);
         }
 
-        /**
-         * Nothing to do: private accessor frame slot has already been assigned and actual field
-         * value initialization will be performed by {@link InitializeInstanceElementsNode}.
-         */
         @Override
         public void defineClassElement(VirtualFrame frame, JSObject homeObject, ClassElementDefinitionRecord classElement) {
+            // Decorators may replace the getter or setter after the private binding is initialized.
+            // Update the binding so private access uses the decorated accessor.
+            writePrivateNode.executeWrite(frame, new Accessor(classElement.getGetter(), classElement.getSetter()));
         }
 
         private static HiddenKey checkAutoAccessorTarget(VirtualFrame frame, DynamicObject.GetNode getStorageKeyNode, DynamicObject.ContainsKeyNode containsBackingStorageKey, Object thiz) {
@@ -1291,6 +1290,7 @@ public final class ObjectLiteralNode extends JavaScriptNode {
 
     @Override
     protected JavaScriptNode copyUninitialized(Set<Class<? extends Tag>> materializedTags) {
-        return new ObjectLiteralNode(ObjectLiteralMemberNode.cloneUninitialized(members, materializedTags), objectCreateNode.copyUninitialized(), cloneUninitialized(prototypeExpression, materializedTags));
+        return new ObjectLiteralNode(ObjectLiteralMemberNode.cloneUninitialized(members, materializedTags), objectCreateNode.copyUninitialized(), cloneUninitialized(prototypeExpression,
+                        materializedTags));
     }
 }

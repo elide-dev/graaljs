@@ -312,10 +312,6 @@
     "status" : "FAIL",
     "comment" : "Very deep conditional chain causes stack overflow"
   }, {
-    "filePath" : "mjsunit/compiler/regress-1065737.js",
-    "status" : "FAIL",
-    "comment" : "TODO: evaluate (V8 tests update 2020-04-24)"
-  }, {
     "filePath" : "mjsunit/compiler/regress-1125145.js",
     "status" : "SKIP",
     "comment" : "Function.prototype.bind heavy test, too slow on Graal.js"
@@ -493,9 +489,6 @@
     "status" : "FAIL",
     "comment" : "Eval var/lexical redeclaration behavior differs from V8."
   }, {
-    "filePath" : "mjsunit/es6/block-let-semantics-sloppy.js",
-    "status" : "FAIL"
-  }, {
     "filePath" : "mjsunit/es6/block-sloppy-function.js",
     "status" : "FAIL"
   }, {
@@ -576,10 +569,6 @@
     "filePath" : "mjsunit/es6/regress/regress-crbug-465671.js",
     "status" : "SKIP",
     "comment" : "spurious failures\njava.lang.IllegalStateException: This node cannot be replaced, because it does not yet have a parent. at com.oracle.truffle.api.nodes.Node.replaceHelper(Node.java:293), com.oracle.truffle.api.nodes.NodeUtil.nonAtomicReplace(NodeUtil.java:207), com.oracle.truffle.api.dsl.internal.SpecializationNode.insertAt(SpecializationNode.java:537), com.oracle.truffle.api.dsl.internal.SpecializationNode$InsertionEvent1.call(SpecializationNode.java:663), com.oracle.truffle.api.dsl.internal.SpecializationNode$InsertionEvent1.call(SpecializationNode.java:647)"
-  }, {
-    "filePath" : "mjsunit/es6/sloppy-restrictive-block-function.js",
-    "status" : "FAIL",
-    "comment" : "GraalJS rejects a sloppy-mode block function declaration accepted by V8."
   }, {
     "filePath" : "mjsunit/es6/typedarray-construct-offset-not-smi.js",
     "status" : "FAIL",
@@ -824,9 +813,45 @@
     "runInIsolation" : true,
     "comment" : "GC stress test"
   }, {
+    "filePath" : "mjsunit/huge-typedarrays-copy-within.js",
+    "runInIsolation" : true,
+    "comment" : "Allocates an almost 2 GiB array buffer; run separately from other memory-intensive tests."
+  }, {
+    "filePath" : "mjsunit/huge-typedarrays-entries-keys-values.js",
+    "runInIsolation" : true,
+    "comment" : "Allocates an almost 2 GiB array buffer; run separately from other memory-intensive tests."
+  }, {
+    "filePath" : "mjsunit/huge-typedarrays-every.js",
+    "runInIsolation" : true,
+    "comment" : "Allocates an almost 2 GiB array buffer; run separately from other memory-intensive tests."
+  }, {
+    "filePath" : "mjsunit/huge-typedarrays-fill.js",
+    "runInIsolation" : true,
+    "comment" : "Allocates an almost 2 GiB array buffer; run separately from other memory-intensive tests."
+  }, {
+    "filePath" : "mjsunit/huge-typedarrays-find.js",
+    "runInIsolation" : true,
+    "comment" : "Allocates an almost 2 GiB array buffer; run separately from other memory-intensive tests."
+  }, {
     "filePath" : "mjsunit/huge-typedarrays-helpers.js",
     "status" : "SKIP",
     "comment" : "Helper file; skipped by upstream mjsunit.status."
+  }, {
+    "filePath" : "mjsunit/huge-typedarrays-includes-indexof.js",
+    "runInIsolation" : true,
+    "comment" : "Allocates an almost 2 GiB array buffer; run separately from other memory-intensive tests."
+  }, {
+    "filePath" : "mjsunit/huge-typedarrays-simple-accessors.js",
+    "runInIsolation" : true,
+    "comment" : "Allocates an almost 2 GiB array buffer; run separately from other memory-intensive tests."
+  }, {
+    "filePath" : "mjsunit/huge-typedarrays-some.js",
+    "runInIsolation" : true,
+    "comment" : "Allocates an almost 2 GiB array buffer; run separately from other memory-intensive tests."
+  }, {
+    "filePath" : "mjsunit/huge-typedarrays-subarray.js",
+    "runInIsolation" : true,
+    "comment" : "Allocates an almost 2 GiB array buffer; run separately from other memory-intensive tests."
   }, {
     "filePath" : "mjsunit/ic-megadom-2.js",
     "status" : "FAIL",
@@ -1375,9 +1400,6 @@
     "status" : "FAIL",
     "comment" : "TestV8 Realm.navigate does not preserve the Temporal global for a cross-realm function."
   }, {
-    "filePath" : "mjsunit/regress/regress-4970.js",
-    "status" : "FAIL"
-  }, {
     "filePath" : "mjsunit/regress/regress-500174491.js",
     "status" : "FAIL",
     "comment" : "TestV8 Realm mock does not implement verifySourcePositions()."
@@ -1470,10 +1492,6 @@
   }, {
     "filePath" : "mjsunit/regress/regress-5902.js",
     "status" : "FAIL"
-  }, {
-    "filePath" : "mjsunit/regress/regress-5927.js",
-    "status" : "FAIL",
-    "comment" : "TODO: evaluate (V8 tests update 2017-07-07)"
   }, {
     "filePath" : "mjsunit/regress/regress-599414-array-concat-fast-path.js",
     "status" : "SKIP",

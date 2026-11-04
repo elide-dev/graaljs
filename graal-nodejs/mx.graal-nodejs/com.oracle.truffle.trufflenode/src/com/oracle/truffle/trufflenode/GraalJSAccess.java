@@ -48,6 +48,7 @@ import static com.oracle.truffle.trufflenode.ContextData.FunctionKey.PropertyHan
 import static com.oracle.truffle.trufflenode.ContextData.FunctionKey.PropertyHandlerPrototypeGlobal;
 import static com.oracle.truffle.trufflenode.ContextData.FunctionKey.SetBreakPoint;
 import static com.oracle.truffle.trufflenode.ContextData.FunctionKey.SetContinuationPreservedEmbedderData;
+import static com.oracle.truffle.trufflenode.ContextData.FunctionKey.WasmStreamingCallback;
 import static com.oracle.truffle.trufflenode.ValueType.ARRAY_BUFFER_VIEW_OBJECT;
 import static com.oracle.truffle.trufflenode.ValueType.ARRAY_OBJECT;
 import static com.oracle.truffle.trufflenode.ValueType.BIG_INT_VALUE;
@@ -179,6 +180,7 @@ import com.oracle.truffle.api.object.Property;
 import com.oracle.truffle.api.source.Source;
 import com.oracle.truffle.api.source.SourceSection;
 import com.oracle.truffle.api.strings.TruffleString;
+import com.oracle.truffle.js.builtins.RegExpPrototypeBuiltins;
 import com.oracle.truffle.js.builtins.helper.JSCollectionsHashCodeNode;
 import com.oracle.truffle.js.builtins.helper.JSCollectionsNormalizeNode;
 import com.oracle.truffle.js.builtins.json.JSONBuiltins;
@@ -845,6 +847,10 @@ public final class GraalJSAccess {
         return JSRuntime.identical(left, right);
     }
 
+    public boolean valueSameValue(Object left, Object right) {
+        return JSRuntime.isSameValue(left, right);
+    }
+
     public boolean valueInstanceOf(Object left, Object right) {
         if (left instanceof JSDynamicObject) {
             JSDynamicObject function = (JSDynamicObject) right;
@@ -1059,7 +1065,7 @@ public final class GraalJSAccess {
     public boolean objectDefineDataProperty(Object object, Object key, long getterPtr, long setterPtr, Object data, int attributes, boolean lazy) {
         int flags = propertyAttributes(attributes);
         PropertyProxy proxy = new NativeDataProperty(key, getterPtr, setterPtr, data, flags, lazy);
-        JSObjectUtil.defineProxyProperty((JSDynamicObject) object, key, proxy, flags);
+        JSObjectUtil.defineInstanceProxyProperty((JSDynamicObject) object, key, proxy, flags);
         return true;
     }
 
@@ -1725,18 +1731,10 @@ public final class GraalJSAccess {
     }
 
     public Object symbolNew(Object name) {
-        Object prev = mainJSRealm.getTruffleContext().enter(null);
-        try {
-            Symbol symbol;
-            if (isAuxEngineCacheMode()) {
-                symbol = getContextEngineCacheData(mainJSContext).createOrUseCachedSingleton((TruffleString) name);
-            } else {
-                symbol = Symbol.create((TruffleString) name);
-            }
-            return symbol;
-        } finally {
-            mainJSRealm.getTruffleContext().leave(null, prev);
+        if (isAuxEngineCacheMode()) {
+            return getContextEngineCacheData(mainJSContext).createOrUseCachedSymbol((TruffleString) name);
         }
+        return Symbol.create((TruffleString) name);
     }
 
     public Object symbolName(Object symbol) {
@@ -1809,6 +1807,9 @@ public final class GraalJSAccess {
     }
 
     public Object symbolPrivateNew(Object description) {
+        if (isAuxEngineCacheMode()) {
+            return getContextEngineCacheData(mainJSContext).createOrUseCachedPrivateSymbol((TruffleString) description);
+        }
         return Symbol.createPrivate((TruffleString) description);
     }
 
@@ -2240,7 +2241,7 @@ public final class GraalJSAccess {
                 Object setter = (setterTemplate == null) ? Undefined.instance : functionTemplateGetFunction(realm, setterTemplate);
                 JSObjectUtil.defineAccessorProperty(context, obj, name, (JSDynamicObject) getter, (JSDynamicObject) setter, attributes);
             } else if (processedValue instanceof PropertyProxy proxy) {
-                JSObjectUtil.defineProxyProperty(obj, name, proxy, attributes);
+                JSObjectUtil.defineInstanceProxyProperty(obj, name, proxy, attributes);
             } else {
                 if (name instanceof HiddenKey) {
                     if (!template.hasPropertyHandler()) {
@@ -3883,6 +3884,19 @@ public final class GraalJSAccess {
         return JSRegExp.create(context, realm, compiledRegexp);
     }
 
+    public Object regexpExec(Object context, Object regexp, Object subject) {
+        JSRealm jsRealm = (JSRealm) context;
+        Object exec = JSObject.get((JSRegExpObject) regexp, Strings.EXEC);
+        if (!JSRuntime.isCallable(exec)) {
+            exec = jsRealm.lookupFunction(RegExpPrototypeBuiltins.BUILTINS, Strings.EXEC);
+        }
+        Object result = JSRuntime.call(exec, regexp, new Object[]{subject});
+        if (result != Null.instance && !JSRuntime.isObject(result)) {
+            throw Errors.createTypeError("object or null expected");
+        }
+        return result;
+    }
+
     @TruffleBoundary
     public Object regexpGetSource(Object regexp) {
         return regexpPattern((JSRegExpObject) regexp);
@@ -4462,6 +4476,11 @@ public final class GraalJSAccess {
     }
 
     private static Object createWasmStreamingCallback(JSRealm realm) {
+        JSFunctionData functionData = getContextEmbedderData(realm.getContext()).getOrCreateFunctionData(WasmStreamingCallback, GraalJSAccess::createWasmStreamingCallbackFunctionData);
+        return JSFunction.create(realm, functionData);
+    }
+
+    private static JSFunctionData createWasmStreamingCallbackFunctionData(JSContext context) {
         JavaScriptRootNode rootNode = new JavaScriptRootNode() {
             @Override
             public Object execute(VirtualFrame frame) {
@@ -4473,8 +4492,7 @@ public final class GraalJSAccess {
                 return Undefined.instance;
             }
         };
-        JSFunctionData functionData = JSFunctionData.createCallOnly(realm.getContext(), rootNode.getCallTarget(), 3, Strings.EMPTY_STRING);
-        return JSFunction.create(realm, functionData);
+        return JSFunctionData.createCallOnly(context, rootNode.getCallTarget(), 3, Strings.EMPTY_STRING);
     }
 
     @TruffleBoundary

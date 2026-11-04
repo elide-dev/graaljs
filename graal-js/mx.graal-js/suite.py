@@ -25,9 +25,9 @@ suite = {
         {
            "name" : "regex",
            "subdir" : True,
-           "version" : "fa4340940fb66d9eb8caf7827e6873b1a176b11f",
+           "version" : "0ee1c59b4bbd06eb440b47a393709c5f71dde44b",
            "urls" : [
-                {"url" : "https://github.com/oracle/graal.git", "kind" : "git"},
+                {"url" : "https://github.com/elide-dev/graal.git", "kind" : "git"},
             ]
         },
     ],
@@ -881,6 +881,7 @@ suite = {
       ],
       "distDependencies" : [
         "sdk:POLYGLOT",
+        "truffle:TRUFFLE_RUNTIME",
         "GRAALJS"
       ],
       "testDistribution": True,

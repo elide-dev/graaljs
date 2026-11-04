@@ -117,13 +117,15 @@ class WorkerThreadsTaskRunner::DelayedTaskScheduler {
                        double delay_in_seconds) {
     auto locked = tasks_.Lock();
 
+    if (has_shut_down_) return;
+
     auto entry = std::make_unique<TaskQueueEntry>(std::move(task), priority);
     auto delayed = std::make_unique<ScheduleTask>(
         this, std::move(entry), delay_in_seconds);
 
     // The delayed task scheuler is on is own thread with its own loop that
     // runs the timers for the scheduled tasks to pop the original task back
-    // into the the worker task queue. This first pushes the tasks that
+    // into the worker task queue. This first pushes the tasks that
     // schedules the timers into the local task queue that will be flushed
     // by the local event loop.
     locked.Push(std::move(delayed));
@@ -132,6 +134,7 @@ class WorkerThreadsTaskRunner::DelayedTaskScheduler {
 
   void Stop() {
     auto locked = tasks_.Lock();
+    has_shut_down_ = true;
     locked.Push(std::make_unique<StopTask>(this));
     uv_async_send(&flush_tasks_);
   }
@@ -241,11 +244,14 @@ class WorkerThreadsTaskRunner::DelayedTaskScheduler {
   uv_loop_t loop_;
   uv_async_t flush_tasks_;
   std::unordered_set<uv_timer_t*> timers_;
+  bool has_shut_down_ = false;
 };
 
 WorkerThreadsTaskRunner::WorkerThreadsTaskRunner(
     int thread_pool_size, PlatformDebugLogLevel debug_log_level)
-    : debug_log_level_(debug_log_level) {
+    : thread_pool_size_(thread_pool_size), debug_log_level_(debug_log_level) {}
+
+void WorkerThreadsTaskRunner::Start(int thread_pool_size) {
   Mutex platform_workers_mutex;
   ConditionVariable platform_workers_ready;
 
@@ -282,6 +288,9 @@ WorkerThreadsTaskRunner::WorkerThreadsTaskRunner(
 void WorkerThreadsTaskRunner::PostTask(v8::TaskPriority priority,
                                        std::unique_ptr<v8::Task> task,
                                        const v8::SourceLocation& location) {
+  std::call_once(
+      start_once_, &WorkerThreadsTaskRunner::Start, this, thread_pool_size_);
+  if (threads_.empty()) return;
   auto entry = std::make_unique<TaskQueueEntry>(std::move(task), priority);
   bool is_outstanding = entry->is_outstanding();
   pending_worker_tasks_.Lock().Push(std::move(entry), is_outstanding);
@@ -292,6 +301,9 @@ void WorkerThreadsTaskRunner::PostDelayedTask(
     std::unique_ptr<v8::Task> task,
     const v8::SourceLocation& location,
     double delay_in_seconds) {
+  std::call_once(
+      start_once_, &WorkerThreadsTaskRunner::Start, this, thread_pool_size_);
+  if (!delayed_task_scheduler_) return;
   delayed_task_scheduler_->PostDelayedTask(
       priority, std::move(task), delay_in_seconds);
 }
@@ -301,15 +313,18 @@ void WorkerThreadsTaskRunner::BlockingDrain() {
 }
 
 void WorkerThreadsTaskRunner::Shutdown() {
+  // Prevent an unused runner from starting threads during or after shutdown.
+  std::call_once(start_once_, [] {});
   pending_worker_tasks_.Lock().Stop();
-  delayed_task_scheduler_->Stop();
+  if (delayed_task_scheduler_) delayed_task_scheduler_->Stop();
   for (size_t i = 0; i < threads_.size(); i++) {
     CHECK_EQ(0, uv_thread_join(threads_[i].get()));
   }
 }
 
 int WorkerThreadsTaskRunner::NumberOfWorkerThreads() const {
-  return threads_.size();
+  // Include the scheduler, as in the eager implementation.
+  return thread_pool_size_ + 1;
 }
 
 PerIsolatePlatformData::PerIsolatePlatformData(
@@ -597,9 +612,9 @@ void NodePlatform::DrainTasks(Isolate* isolate) {
     // However, not blocking on the worker tasks at all can lead to loss of some
     // critical user-blocking worker tasks e.g. wasm async compilation tasks,
     // which should block the main thread until they are completed, as the
-    // documentation suggets. As a compromise, we currently only block on
+    // documentation suggests. As a compromise, we currently only block on
     // user-blocking tasks to reduce the chance of deadlocks while making sure
-    // that criticl user-blocking tasks are not lost.
+    // that critical user-blocking tasks are not lost.
     worker_thread_task_runner_->BlockingDrain();
   } while (per_isolate->FlushForegroundTasksInternal());
 }

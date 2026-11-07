@@ -472,6 +472,12 @@ public final class JSContextOptions {
     public static final OptionKey<Boolean> FOREIGN_HASH_PROPERTIES = new OptionKey<>(true);
     @CompilationFinal private boolean hasForeignHashProperties;
 
+    public static final String FOREIGN_PROTOTYPE_REGISTRY_NAME = JS_OPTION_PREFIX + "foreign-prototype-registry";
+    @Option(name = FOREIGN_PROTOTYPE_REGISTRY_NAME, category = OptionCategory.EXPERT, stability = OptionStability.EXPERIMENTAL, help = "" +
+                    "Provide Graal.registerForeignPrototype(metaObjectOrInstance, prototype), which assigns a JS prototype to the non-JS objects with the given interop meta-object.") //
+    public static final OptionKey<Boolean> FOREIGN_PROTOTYPE_REGISTRY = new OptionKey<>(false);
+    @CompilationFinal private boolean foreignPrototypeRegistry;
+
     // limit originally from TestV8 regress-1122.js, regress-605470.js
     public static final String FUNCTION_ARGUMENTS_LIMIT_NAME = JS_OPTION_PREFIX + "function-arguments-limit";
     @Option(name = FUNCTION_ARGUMENTS_LIMIT_NAME, category = OptionCategory.EXPERT, usageSyntax = "<int>", help = "Maximum number of arguments for functions.") //
@@ -892,6 +898,7 @@ public final class JSContextOptions {
         this.scriptEngineGlobalScopeImport = readBooleanOption(SCRIPT_ENGINE_GLOBAL_SCOPE_IMPORT);
         this.foreignObjectPrototypeMode = FOREIGN_OBJECT_PROTOTYPE.getValue(optionValues);
         this.hasForeignHashProperties = readBooleanOption(FOREIGN_HASH_PROPERTIES);
+        this.foreignPrototypeRegistry = readBooleanOption(FOREIGN_PROTOTYPE_REGISTRY);
         this.functionArgumentsLimit = readLongOption(FUNCTION_ARGUMENTS_LIMIT);
         this.test262Mode = readBooleanOption(TEST262_MODE);
         this.testV8Mode = readBooleanOption(TESTV8_MODE);
@@ -1134,6 +1141,10 @@ public final class JSContextOptions {
 
     public boolean hasForeignHashProperties() {
         return hasForeignHashProperties;
+    }
+
+    public boolean isForeignPrototypeRegistry() {
+        return foreignPrototypeRegistry;
     }
 
     public boolean isGlobalProperty() {

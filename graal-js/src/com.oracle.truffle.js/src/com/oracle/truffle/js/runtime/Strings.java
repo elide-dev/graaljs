@@ -428,6 +428,7 @@ public final class Strings {
     public static final TruffleString VERSION_ECMA_SCRIPT = constant("versionECMAScript");
     public static final TruffleString IS_GRAAL_RUNTIME = constant("isGraalRuntime");
     public static final TruffleString SET_UNHANDLED_PROMISE_REJECTION_HANDLER = constant("setUnhandledPromiseRejectionHandler");
+    public static final TruffleString REGISTER_FOREIGN_PROTOTYPE = constant("registerForeignPrototype");
     public static final TruffleString UC_PACKAGES = constant("Packages");
     public static final TruffleString JAVA = constant("java");
     public static final TruffleString JAVAFX = constant("javafx");

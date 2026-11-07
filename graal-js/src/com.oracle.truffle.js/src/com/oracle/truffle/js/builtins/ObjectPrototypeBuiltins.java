@@ -72,6 +72,7 @@ import com.oracle.truffle.js.nodes.cast.JSToPropertyKeyNode;
 import com.oracle.truffle.js.nodes.function.JSBuiltin;
 import com.oracle.truffle.js.nodes.function.JSBuiltinNode;
 import com.oracle.truffle.js.nodes.function.JSFunctionCallNode;
+import com.oracle.truffle.js.nodes.interop.ForeignObjectPrototypeNode;
 import com.oracle.truffle.js.nodes.unary.IsCallableNode;
 import com.oracle.truffle.js.runtime.BigInt;
 import com.oracle.truffle.js.runtime.Errors;
@@ -334,7 +335,14 @@ public final class ObjectPrototypeBuiltins extends JSBuiltinsContainer.SwitchEnu
                         @CachedLibrary("thisObj") InteropLibrary interop) {
             if (interop.isNull(thisObj)) {
                 return Strings.TO_STRING_VALUE_NULL;
-            } else if (interop.hasArrayElements(thisObj)) {
+            }
+            if (!getContext().getForeignPrototypeRegistryUnusedAssumption().isValid()) {
+                TruffleString tag = getRegisteredForeignToStringTag(thisObj, interop);
+                if (tag != null) {
+                    return formatString(tag);
+                }
+            }
+            if (interop.hasArrayElements(thisObj)) {
                 return Strings.TO_STRING_VALUE_ARRAY;
             } else if (interop.isExecutable(thisObj) || interop.isInstantiable(thisObj)) {
                 return Strings.TO_STRING_VALUE_FUNCTION;
@@ -343,6 +351,19 @@ public final class ObjectPrototypeBuiltins extends JSBuiltinsContainer.SwitchEnu
             } else {
                 return Strings.TO_STRING_VALUE_OBJECT;
             }
+        }
+
+        /**
+         * Foreign objects with a prototype registered by the embedder honor its @@toStringTag.
+         */
+        private TruffleString getRegisteredForeignToStringTag(Object thisObj, InteropLibrary interop) {
+            if (ForeignObjectPrototypeNode.getRegisteredPrototype(thisObj, interop, getRealm()) != null) {
+                Object toStringTag = getStringTagNode.getValue(thisObj);
+                if (toStringTag instanceof TruffleString tag) {
+                    return tag;
+                }
+            }
+            return null;
         }
 
         @Specialization

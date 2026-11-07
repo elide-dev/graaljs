@@ -6,6 +6,7 @@ Changelog may include unreleased versions.
 See [release calendar](https://www.graalvm.org/release-calendar/) for release dates.
 
 ## Version 25.5.5
+* Added the experimental option `js.foreign-prototype-registry` that provides `Graal.registerForeignPrototype(metaObjectOrInstance, prototype)` to assign a JavaScript prototype to foreign objects with a given interop meta-object, for example to provide `Symbol.dispose` or `Symbol.asyncIterator` for host objects. Embedders with access to the realm can use `JSRealm.registerForeignPrototype` instead. See [Java Interoperability](docs/user/JavaInteroperability.md#custom-prototypes-for-foreign-objects).
 * Added `js.foreign-object-prototype=specialized-only` mode to make generic foreign objects inherit directly from `Object.prototype`, improving compatibility with `Object.getPrototypeOf(foreign) === Object.prototype` checks. Specialized foreign prototypes and the existing `true` (default) and `false` modes are unchanged.
 
 ## Version 25.4.4

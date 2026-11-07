@@ -83,8 +83,10 @@ import com.oracle.truffle.api.TruffleFile;
 import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.TruffleLanguage.ContextReference;
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.interop.HeapIsolationException;
 import com.oracle.truffle.api.interop.InteropException;
 import com.oracle.truffle.api.interop.InteropLibrary;
+import com.oracle.truffle.api.interop.UnsupportedMessageException;
 import com.oracle.truffle.api.nodes.LanguageInfo;
 import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.Shape;
@@ -320,6 +322,18 @@ public class JSRealm {
     private final JSDynamicObject foreignErrorPrototype;
     private final JSDynamicObject foreignFunctionPrototype;
     private final JSDynamicObject foreignObjectPrototype;
+
+    /**
+     * Foreign prototypes registered by the embedder ({@link #registerForeignPrototype}), keyed by
+     * interop meta-object identity. Replaced (copy-on-write) on every change.
+     */
+    private ForeignPrototypeEntry[] foreignPrototypeEntries = ForeignPrototypeEntry.EMPTY;
+    /** Whether any key of {@link #foreignPrototypeEntries} is an unwrapped host class. */
+    private boolean foreignPrototypeHostKeys;
+
+    private record ForeignPrototypeEntry(Object key, JSDynamicObject prototype) {
+        static final ForeignPrototypeEntry[] EMPTY = new ForeignPrototypeEntry[0];
+    }
 
     private final Shape initialRegExpPrototypeShape;
     private final JSObjectFactory.RealmData objectFactories;
@@ -1686,6 +1700,109 @@ public class JSRealm {
         return foreignObjectPrototype;
     }
 
+    /**
+     * Registers {@code prototype} as the JS prototype of all non-JS objects in this realm whose
+     * interop meta-object ({@link InteropLibrary#getMetaObject}) is {@code metaObject}. A
+     * registered prototype takes precedence over the trait-based foreign prototypes (e.g.,
+     * {@link #getForeignArrayPrototype()}); to keep the trait-based behavior, the registered
+     * prototype should inherit from the appropriate foreign prototype.
+     * <p>
+     * Meta-objects are compared by identity, except for host objects, which are compared by their
+     * unwrapped host class. Registrations are per realm, and survive context pre-initialization
+     * together with the realm. Passing {@code null} as {@code prototype} removes the registration.
+     *
+     * @param metaObject the interop meta-object of the objects that get the prototype
+     * @param prototype the prototype, or {@code null} to remove the registration
+     */
+    @TruffleBoundary
+    public void registerForeignPrototype(Object metaObject, JSDynamicObject prototype) {
+        Objects.requireNonNull(metaObject, "metaObject");
+        if (metaObject instanceof JSDynamicObject) {
+            throw new IllegalArgumentException("metaObject must not be a JavaScript object");
+        }
+        Object hostClass = getHostClass(metaObject);
+        boolean hostKey = hostClass != null;
+        Object key = hostKey ? hostClass : metaObject;
+        ForeignPrototypeEntry[] entries = foreignPrototypeEntries;
+        List<ForeignPrototypeEntry> newEntries = new ArrayList<>(entries.length + 1);
+        boolean newHostKeys = false;
+        for (ForeignPrototypeEntry entry : entries) {
+            if (entry.key() != key) {
+                newEntries.add(entry);
+                newHostKeys |= isHostKey(entry.key());
+            }
+        }
+        if (prototype != null) {
+            newEntries.add(new ForeignPrototypeEntry(key, prototype));
+            newHostKeys |= hostKey;
+            context.invalidateForeignPrototypeRegistryUnusedAssumption();
+        }
+        foreignPrototypeHostKeys = newHostKeys;
+        foreignPrototypeEntries = newEntries.toArray(ForeignPrototypeEntry.EMPTY);
+    }
+
+    private static boolean isHostKey(Object key) {
+        return key instanceof Class<?>;
+    }
+
+    /**
+     * Whether this realm has any foreign prototype registered with
+     * {@link #registerForeignPrototype}.
+     */
+    public boolean hasRegisteredForeignPrototypes() {
+        return foreignPrototypeEntries.length != 0;
+    }
+
+    /**
+     * Returns the prototype registered for the interop meta-object {@code metaObject}, or
+     * {@code null} if none.
+     */
+    public JSDynamicObject getRegisteredForeignPrototype(Object metaObject) {
+        ForeignPrototypeEntry[] entries = foreignPrototypeEntries;
+        for (int i = 0; i < entries.length; i++) {
+            if (entries[i].key() == metaObject) {
+                return entries[i].prototype();
+            }
+        }
+        if (foreignPrototypeHostKeys) {
+            return getRegisteredForeignPrototypeForHostObject(metaObject);
+        }
+        return null;
+    }
+
+    @TruffleBoundary
+    private JSDynamicObject getRegisteredForeignPrototypeForHostObject(Object metaObject) {
+        Object hostClass = getHostClass(metaObject);
+        if (hostClass != null) {
+            for (ForeignPrototypeEntry entry : foreignPrototypeEntries) {
+                if (entry.key() == hostClass) {
+                    return entry.prototype();
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns the host class wrapped by a host meta-object, or {@code null}. Host meta-objects are
+     * not identity-stable (a new wrapper may be returned for every
+     * {@link InteropLibrary#getMetaObject} call), so they are keyed by the class.
+     */
+    private static Object getHostClass(Object metaObject) {
+        InteropLibrary interop = InteropLibrary.getUncached(metaObject);
+        if (interop.isHostObject(metaObject)) {
+            try {
+                Object hostObject = interop.asHostObject(metaObject);
+                if (hostObject instanceof Class<?>) {
+                    return hostObject;
+                }
+            } catch (UnsupportedMessageException | HeapIsolationException e) {
+                // not a host class
+            }
+        }
+        return null;
+    }
+
     public final Map<Object, JSArrayObject> getTemplateRegistry() {
         if (templateRegistry == null) {
             createTemplateRegistry();
@@ -2476,6 +2593,10 @@ public class JSRealm {
             JSFunctionObject registerFunction = JSFunction.create(this, setUnhandledPromiseRejectionHandlerFunction(context));
             JSObjectUtil.putDataProperty(graalObject, Strings.SET_UNHANDLED_PROMISE_REJECTION_HANDLER, registerFunction, flags);
         }
+        if (options.isForeignPrototypeRegistry()) {
+            JSFunctionObject registerFunction = JSFunction.create(this, registerForeignPrototypeFunction(context));
+            JSObjectUtil.putDataProperty(graalObject, Strings.REGISTER_FOREIGN_PROTOTYPE, registerFunction, flags);
+        }
         putGlobalProperty(Strings.GRAAL, graalObject);
     }
 
@@ -2499,6 +2620,49 @@ public class JSRealm {
                 }
             }.getCallTarget(), 0, Strings.SET_UNHANDLED_PROMISE_REJECTION_HANDLER);
         });
+    }
+
+    private static JSFunctionData registerForeignPrototypeFunction(JSContext context) {
+        return context.getOrCreateBuiltinFunctionData(BuiltinFunctionKey.RegisterForeignPrototype, (c) -> {
+            return JSFunctionData.createCallOnly(c, new JavaScriptRootNode(c.getLanguage(), null, null) {
+                @Override
+                public Object execute(VirtualFrame frame) {
+                    Object[] args = frame.getArguments();
+                    Object target = JSArguments.getUserArgumentCount(args) > 0 ? JSArguments.getUserArgument(args, 0) : Undefined.instance;
+                    Object prototype = JSArguments.getUserArgumentCount(args) > 1 ? JSArguments.getUserArgument(args, 1) : Undefined.instance;
+                    registerForeignPrototypeImpl(getRealm(), target, prototype);
+                    return Undefined.instance;
+                }
+            }.getCallTarget(), 2, Strings.REGISTER_FOREIGN_PROTOTYPE);
+        });
+    }
+
+    /**
+     * Implements {@code Graal.registerForeignPrototype(metaObjectOrInstance, prototype)}. The first
+     * argument is a non-JS meta-object, or a non-JS object whose meta-object is used.
+     */
+    @TruffleBoundary
+    private static void registerForeignPrototypeImpl(JSRealm realm, Object target, Object prototype) {
+        if (!JSRuntime.isForeignObject(target)) {
+            throw Errors.createTypeError("registerForeignPrototype: the first argument must be a non-JavaScript object or meta-object");
+        }
+        if (!(prototype instanceof JSObject) && prototype != Null.instance) {
+            throw Errors.createTypeError("registerForeignPrototype: the prototype must be an object or null");
+        }
+        InteropLibrary interop = InteropLibrary.getUncached(target);
+        Object metaObject;
+        if (interop.isMetaObject(target)) {
+            metaObject = target;
+        } else if (interop.hasMetaObject(target)) {
+            try {
+                metaObject = interop.getMetaObject(target);
+            } catch (UnsupportedMessageException e) {
+                throw Errors.createTypeErrorInteropException(target, e, "getMetaObject", null);
+            }
+        } else {
+            throw Errors.createTypeError("registerForeignPrototype: the first argument has no meta-object");
+        }
+        realm.registerForeignPrototype(metaObject, prototype == Null.instance ? null : (JSObject) prototype);
     }
 
     private static JSFunctionData isGraalRuntimeFunction(JSContext context) {

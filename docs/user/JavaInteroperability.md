@@ -299,6 +299,45 @@ try {
 }
 ```
 
+### Custom Prototypes for Foreign Objects
+
+By default, GraalJS selects the prototype of a foreign object, such as a Java object or a `TruffleObject` of another language, from its interop traits.
+For example, an object with array elements inherits from a foreign array prototype that inherits from `Array.prototype`.
+Interop has no notion of symbol-keyed members, so a foreign object cannot provide `Symbol.dispose`, `Symbol.asyncIterator`, `Symbol.toStringTag`, or other well-known symbol methods by itself.
+
+With the experimental option `js.foreign-prototype-registry`, you can assign a JavaScript prototype to all foreign objects that have a given interop meta-object (the value of `InteropLibrary.getMetaObject`).
+The option adds the function `Graal.registerForeignPrototype(metaObjectOrInstance, prototype)`:
+
+* The first argument is a foreign meta-object, or a foreign object whose meta-object is used.
+  Meta-objects are compared by identity, except for Java classes, which are compared by the class they represent.
+* The second argument is the prototype, or `null` to remove the registration.
+* A registered prototype takes precedence over the trait-based prototype.
+  To keep the trait-based behavior, for example array methods and `length` for foreign arrays, let the registered prototype inherit from the trait-based prototype.
+* Registrations apply to the current realm only, so contexts that share an engine can register different prototypes.
+* `Object.prototype.toString` uses the `Symbol.toStringTag` of a registered prototype.
+
+For example, with `--js.foreign-prototype-registry --js.explicit-resource-management`:
+```js
+// table is a foreign object with array elements and a close() member
+const proto = Object.create(Object.getPrototypeOf(table), {
+    [Symbol.toStringTag]: {value: 'Table'},
+    [Symbol.dispose]: {value() { this.close(); }},
+    [Symbol.asyncIterator]: {value: async function*() { yield* this; }},
+});
+Graal.registerForeignPrototype(table, proto);
+
+{
+    using t = table;
+    t.map(row => row.length);             // array methods still work
+    Object.prototype.toString.call(t);    // "[object Table]"
+}                                         // calls t[Symbol.dispose]()
+```
+
+Language and tool implementations that have access to the JavaScript realm can register a prototype from Java with `JSRealm.registerForeignPrototype(Object metaObject, JSDynamicObject prototype)`, which does not require the option.
+The realm provides the trait-based prototypes, for example `JSRealm.getForeignArrayPrototype()` and `JSRealm.getForeignObjectPrototype()`, to inherit from.
+Registrations made during context pre-initialization are kept in the pre-initialized realm.
+As long as no prototype is registered, foreign prototype lookup is not affected.
+
 ## Promises
 
 GraalJS provides support for interoperability between JavaScript `Promise` objects and Java.

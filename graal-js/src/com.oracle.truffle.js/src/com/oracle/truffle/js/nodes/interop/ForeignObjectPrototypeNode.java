@@ -45,14 +45,21 @@ import com.oracle.truffle.api.dsl.ImportStatic;
 import com.oracle.truffle.api.dsl.NeverDefault;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.interop.InteropLibrary;
+import com.oracle.truffle.api.interop.UnsupportedMessageException;
 import com.oracle.truffle.api.library.CachedLibrary;
 import com.oracle.truffle.js.nodes.JavaScriptBaseNode;
 import com.oracle.truffle.js.runtime.JSConfig;
+import com.oracle.truffle.js.runtime.JSContext;
 import com.oracle.truffle.js.runtime.JSRealm;
 import com.oracle.truffle.js.runtime.objects.JSDynamicObject;
 
 /**
  * Node that returns a suitable prototype for a foreign object.
+ * <p>
+ * A prototype registered for the object's interop meta-object with
+ * {@link JSRealm#registerForeignPrototype} takes precedence over the prototype selected by interop
+ * traits. As long as no realm of the context has registered a foreign prototype, the registry is
+ * not consulted at all (see {@link JSContext#getForeignPrototypeRegistryUnusedAssumption()}).
  */
 @GenerateUncached
 @ImportStatic({JSConfig.class})
@@ -64,6 +71,12 @@ public abstract class ForeignObjectPrototypeNode extends JavaScriptBaseNode {
     public JSDynamicObject doTruffleObject(Object truffleObject,
                     @CachedLibrary("truffleObject") InteropLibrary interop) {
         JSRealm realm = getRealm();
+        if (!getJSContext().getForeignPrototypeRegistryUnusedAssumption().isValid()) {
+            JSDynamicObject registered = getRegisteredPrototype(truffleObject, interop, realm);
+            if (registered != null) {
+                return registered;
+            }
+        }
         if (interop.hasArrayElements(truffleObject)) {
             return realm.getForeignArrayPrototype();
         } else if (interop.isInstant(truffleObject)) {
@@ -87,6 +100,21 @@ public abstract class ForeignObjectPrototypeNode extends JavaScriptBaseNode {
         } else {
             return realm.getForeignObjectPrototype();
         }
+    }
+
+    /**
+     * Returns the prototype registered with {@link JSRealm#registerForeignPrototype} for the
+     * meta-object of {@code truffleObject}, or {@code null} if none.
+     */
+    public static JSDynamicObject getRegisteredPrototype(Object truffleObject, InteropLibrary interop, JSRealm realm) {
+        if (realm.hasRegisteredForeignPrototypes() && interop.hasMetaObject(truffleObject)) {
+            try {
+                return realm.getRegisteredForeignPrototype(interop.getMetaObject(truffleObject));
+            } catch (UnsupportedMessageException e) {
+                return null;
+            }
+        }
+        return null;
     }
 
     @NeverDefault

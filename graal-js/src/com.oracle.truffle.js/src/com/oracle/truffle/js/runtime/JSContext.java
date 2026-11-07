@@ -271,6 +271,13 @@ public class JSContext {
     private ImportModuleDynamicallyCallback importModuleDynamicallyCallback;
     private final Assumption importModuleDynamicallyCallbackNotUsedAssumption;
 
+    /**
+     * Assumption: No realm of this context has registered a foreign prototype (see
+     * {@link JSRealm#registerForeignPrototype}). While valid, foreign prototype lookup does not
+     * consult the registry at all.
+     */
+    private final Assumption foreignPrototypeRegistryUnusedAssumption;
+
     private final CallTarget emptyFunctionCallTarget;
 
     public final JSFunctionData symbolSpeciesThisGetterFunctionData;
@@ -431,6 +438,7 @@ public class JSContext {
         FunctionAsyncIterator,
         IsGraalRuntime,
         SetUnhandledPromiseRejectionHandler,
+        RegisterForeignPrototype,
         AsyncModuleExecutionFulfilled,
         AsyncModuleExecutionRejected,
         TopLevelAwaitResolve,
@@ -676,6 +684,7 @@ public class JSContext {
         this.promiseRejectionTrackerNotUsedAssumption = Truffle.getRuntime().createAssumption("promiseRejectionTrackerNotUsedAssumption");
         this.importMetaInitializerNotUsedAssumption = Truffle.getRuntime().createAssumption("importMetaInitializerNotUsedAssumption");
         this.importModuleDynamicallyCallbackNotUsedAssumption = Truffle.getRuntime().createAssumption("importModuleDynamicallyCallbackNotUsedAssumption");
+        this.foreignPrototypeRegistryUnusedAssumption = Truffle.getRuntime().createAssumption("foreignPrototypeRegistryUnusedAssumption");
 
         this.emptyFunctionCallTarget = createEmptyFunctionCallTarget(lang);
         this.symbolSpeciesThisGetterFunctionData = JSFunctionData.createCallOnly(this, createReadFrameThisCallTarget(lang, GET_SYMBOL_SPECIES_NAME), 0, GET_SYMBOL_SPECIES_NAME);
@@ -1768,6 +1777,17 @@ public class JSContext {
             return;
         }
         agent.notifyPromiseRejectionTracker(promise, operation, value);
+    }
+
+    public final Assumption getForeignPrototypeRegistryUnusedAssumption() {
+        return foreignPrototypeRegistryUnusedAssumption;
+    }
+
+    final void invalidateForeignPrototypeRegistryUnusedAssumption() {
+        if (foreignPrototypeRegistryUnusedAssumption.isValid()) {
+            CompilerDirectives.transferToInterpreterAndInvalidate();
+            foreignPrototypeRegistryUnusedAssumption.invalidate("foreign prototype registered");
+        }
     }
 
     public final void setPromiseHook(PromiseHook promiseHook) {

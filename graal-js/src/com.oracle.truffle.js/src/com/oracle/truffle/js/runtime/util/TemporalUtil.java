@@ -3445,7 +3445,8 @@ public final class TemporalUtil {
                 Object eraYear = JSObject.get(fields, ERA_YEAR);
                 boolean eraSet = (era != Undefined.instance);
                 boolean eraYearSet = (eraYear != Undefined.instance);
-                if (eraYearSet && cal instanceof IslamicCalendar && Strings.equals(IntlUtil.BH, (TruffleString) era)) {
+                // Require era set before casting it below; eraYear without era falls through to the TypeError (spec).
+                if (eraSet && eraYearSet && cal instanceof IslamicCalendar && Strings.equals(IntlUtil.BH, (TruffleString) era)) {
                     eraYear = 1 - ((Number) eraYear).intValue();
                     JSObject.set(fields, ERA_YEAR, eraYear);
                 }

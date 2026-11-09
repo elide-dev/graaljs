@@ -1,0 +1,19 @@
+{
+  "candidate": "temporal-era",
+  "repository": "graaljs",
+  "upstreamBase": "934cb7cb826453f687220493bcf08fa386c659aa",
+  "cleanHead": "399b846bd8bf2ba97bc70dc19121b19a3d3e802f",
+  "graalImport": "29054f702c3cd8420cdc927409b7d0f55acddec2",
+  "tests": [
+    "graal-js/src/com.oracle.truffle.js.test/js/temporal/era_year_without_era.js"
+  ],
+  "regression": [
+    "unittest",
+    "com.oracle.truffle.js.test.suite.JSSimpleTestSuite#era_year_without_era"
+  ],
+  "suite": [
+    "unittest",
+    "com.oracle.truffle.js.test.suite.JSSimpleTestSuite"
+  ],
+  "diagnostic": "ClassCastException"
+}

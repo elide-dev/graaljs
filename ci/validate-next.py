@@ -14,7 +14,11 @@ source = Path.cwd()
 subject = json.loads((source / 'ci/next-subject.json').read_text())
 results = Path(os.environ['RUNNER_TEMP']) / 'candidate-results'
 if results.exists():
-    raise SystemExit('Unexpected prior results directory; reconcile before replacing it')
+    if results.is_symlink():
+        raise SystemExit('Unexpected results symlink; retain for investigation')
+    retained = Path(tempfile.mkdtemp(prefix='prior-candidate-results-', dir=os.environ['RUNNER_TEMP']))
+    results.rename(retained / 'results')
+    print('Retained earlier runner artifacts at ' + str(retained), flush=True)
 results.mkdir()
 scratch = Path(tempfile.mkdtemp(prefix='upstream-next-', dir='/tmp'))
 baseline = scratch / 'baseline/source'
